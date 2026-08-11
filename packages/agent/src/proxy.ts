@@ -179,6 +179,7 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 			reader = response.body!.getReader();
 			const decoder = new TextDecoder();
 			let buffer = "";
+			let receivedTerminalEvent = false;
 
 			while (true) {
 				const { done, value } = await reader.read();
@@ -200,6 +201,9 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 							const event = processProxyEvent(proxyEvent, partial);
 							if (event) {
 								stream.push(event);
+								if (event.type === "done" || event.type === "error") {
+									receivedTerminalEvent = true;
+								}
 							}
 						}
 					}
@@ -210,6 +214,15 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 				throw new Error("Request aborted by user");
 			}
 
+			if (!receivedTerminalEvent) {
+				partial.stopReason = "error";
+				partial.errorMessage = "Proxy stream ended without a terminal event";
+				stream.push({
+					type: "error",
+					reason: "error",
+					error: partial,
+				});
+			}
 			stream.end();
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -344,7 +357,7 @@ function processProxyEvent(
 					partial,
 				};
 			}
-			return undefined;
+			throw new Error("Received toolcall_end for non-toolCall content");
 		}
 
 		case "done":
