@@ -11,6 +11,7 @@
 - Fixed Homebrew installs attempting to self-update their versioned Cellar keg instead of directing users to `brew upgrade prime-agent` ([#844](https://github.com/PrimeIntellect-ai/prime-agent/issues/844))
 - Fixed the agents view collapsing expanded subagent lists when returning from an opened agent ([ENG-5105](https://linear.app/primeintellect/issue/ENG-5105/keep-the-agents-view-state-persistent)).
 - Kept the subagent summary row visible and selectable while its list is expanded in the agents view, so pressing enter on it collapses the list again ([ENG-5105](https://linear.app/primeintellect/issue/ENG-5105/keep-the-agents-view-state-persistent)).
+- Fixed the ZAI provider's default model pointing at `glm-5.1`, an ID absent from its own catalog, so a fresh ZAI/GLM Coding Plan login now defaults to `glm-5.2` instead of silently falling back to the oldest listed model.
 
 ## [0.7.1] - 2026-08-07
 
