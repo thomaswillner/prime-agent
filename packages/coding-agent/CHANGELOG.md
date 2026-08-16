@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Added native model failover: configure an ordered `fallbackModels` chain in settings or via `--fallback-models` to switch models and continue the same conversation once retries are exhausted on a retryable failure ([#1436](https://github.com/PrimeIntellect-ai/prime-agent/issues/1436)).
+- Fixed automatic model failover persisting the fallback model as the configured default; a transient provider outage no longer repoints the default model for future sessions.
 - Fixed fullscreen wheel scrolling in Ghostty while retaining application link clicks; set `terminal.fullscreenMouse` to `false` to use native Cmd-click instead.
 - Changed the agents view to sort idle and inactive sessions by last message time, newest first, while keeping running agents in stable creation order.
 - Fixed `openai-codex` models being invisible to `rlm` subagents and `find_models` because model discovery reported Prime Agent's own version as the Codex client version ([#1375](https://github.com/PrimeIntellect-ai/prime-agent/pull/1375) by [@bilelrais](https://github.com/bilelrais)).

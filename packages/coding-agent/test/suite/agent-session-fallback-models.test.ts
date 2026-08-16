@@ -280,4 +280,27 @@ describe("native model failover (fallbackModels)", () => {
 		expect(childUpdates.length).toBeGreaterThan(0);
 		expect(childUpdates[0].child.model).toBe("faux/faux-2");
 	});
+
+	it("does not persist an automatic failover as the user's default model", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: {
+				retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 },
+				defaultProvider: "faux",
+				defaultModel: "faux-1",
+			},
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+
+		harness.setResponses([transientError(), transientError(), fauxAssistantMessage("recovered")]);
+
+		await harness.session.prompt("test");
+
+		// The session runs on the fallback, but a transient outage must not
+		// silently repoint the configured default for every future session.
+		expect(harness.session.model?.id).toBe("faux-2");
+		expect(harness.settingsManager.getDefaultModel()).toBe("faux-1");
+		expect(harness.settingsManager.getDefaultProvider()).toBe("faux");
+	});
 });

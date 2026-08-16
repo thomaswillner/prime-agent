@@ -921,6 +921,12 @@ export interface ModelCycleResult {
 
 interface ModelSelectOptions {
 	waitForExtensions?: boolean;
+	/**
+	 * Persist the model as the user's default. Automatic failover sets this to
+	 * false so a transient provider outage does not silently repoint the
+	 * configured default for every future session.
+	 */
+	persistDefault?: boolean;
 }
 
 interface ToolDefinitionEntry {
@@ -6725,7 +6731,9 @@ export class AgentSession {
 		const serviceTier = this._getServiceTierForModelSwitch();
 		this.agent.state.model = model;
 		this.sessionManager.appendModelChange(model.provider, model.id);
-		this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
+		if (options.persistDefault !== false) {
+			this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
+		}
 
 		// Re-clamp thinking level for new model's capabilities
 		this.setThinkingLevel(thinkingLevel);
@@ -10297,7 +10305,7 @@ export class AgentSession {
 		const reason = message.errorMessage ?? failureClass;
 
 		try {
-			await this.setModel(next, { waitForExtensions: false });
+			await this.setModel(next, { waitForExtensions: false, persistDefault: false });
 		} catch {
 			// An unusable chain entry must not strand the session: retire it and
 			// let the next _handleRetryableError call try the following entry.
