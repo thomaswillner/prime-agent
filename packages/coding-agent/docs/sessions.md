@@ -132,6 +132,39 @@ When prompted, choose one of:
 
 See [Compaction](compaction.md) for branch summarization internals and extension hooks.
 
+## Session Patterns
+
+`prime-agent session patterns` reports deterministic, rule-based patterns across the sessions on disk:
+
+```
+Analyzed 143 sessions in ~/.prime/agent/sessions
+
+Rule-based
+Split or summarize work before context pressure and mid-task compactions accumulate.
+60 of 143 sessions have this deterministic pattern.
+Rule: Two or more compactions, or a compaction the agent kept working through in the same turn.
+Examples:
+  0199a1b2-8c31-7f10-9a44-c0ffee123456  2 compactions (2 mid-task)  /work/prime-agent
+  Open one with: prime-agent --resume 0199a1b2-8c31-7f10-9a44-c0ffee123456
+```
+
+Each rule is a pure function of a single session file, so the same session store always produces the same counts. Rules with no matches are still printed, which is what makes the report usable for checking a count reported elsewhere against the sessions on disk. Every pattern prints the rule it applied and links example sessions to open.
+
+| Option | Description |
+|--------|-------------|
+| `--examples <n>` | Example sessions linked per pattern (default: 3, `0` to omit) |
+| `--session-dir <dir>` | Analyze a specific session directory instead of the default |
+| `--json` | Print the full report, including every example, as JSON |
+
+Current rules:
+
+| Rule | Matches when |
+|------|--------------|
+| `context-pressure` | The session has two or more compactions, or a compaction the agent kept working through in the same turn |
+| `prompt-edits-unverified` | The session edited a prompt surface (`AGENTS.md`, `CLAUDE.md`, skills, prompt templates) and ran nothing afterwards |
+
+Both rules read tool calls, so file changes made through `ipython` or `bash` rather than the `edit` tool are not counted as prompt surface edits.
+
 ## Session Format
 
 Session files are JSONL and contain message entries, model changes, thinking-level changes, labels, compactions, branch summaries, and extension entries.

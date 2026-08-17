@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	psCalls: [] as boolean[],
 	reapCalls: [] as Array<[boolean, boolean]>,
 	shutdownCalls: [] as Array<[boolean, boolean]>,
+	sessionPatternRuns: [] as unknown[],
 }));
 
 vi.mock("../src/cli/daemon-command.js", () => ({
@@ -36,6 +37,16 @@ vi.mock("../src/cli/daemon-ps.js", () => ({
 	},
 }));
 
+vi.mock("../src/cli/session-patterns-command.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../src/cli/session-patterns-command.js")>();
+	return {
+		...actual,
+		runSessionPatterns: async (options: unknown) => {
+			mocks.sessionPatternRuns.push(options);
+		},
+	};
+});
+
 import { INTERNAL_RUNTIME_COMMAND_MARKER } from "../src/cli/args.js";
 import { formatTopLevelHelp } from "../src/cli/command-registry.js";
 import { DAEMON_UPDATE_RESTART_COORDINATOR_FLAG } from "../src/cli/daemon-update-restart.js";
@@ -48,6 +59,7 @@ describe("public command routing", () => {
 		mocks.psCalls.length = 0;
 		mocks.reapCalls.length = 0;
 		mocks.shutdownCalls.length = 0;
+		mocks.sessionPatternRuns.length = 0;
 		process.exitCode = undefined;
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
@@ -223,6 +235,30 @@ describe("public command routing", () => {
 			handled: false,
 			args: [INTERNAL_RUNTIME_COMMAND_MARKER, "--export", "session.jsonl", "session.html", "--verbose"],
 		});
+	});
+
+	it("handles session patterns without touching the runtime", async () => {
+		await expect(handlePublicCommand(["session", "patterns", "--json", "--examples", "5"])).resolves.toMatchObject({
+			handled: true,
+		});
+
+		expect(mocks.sessionPatternRuns).toEqual([{ json: true, exampleLimit: 5 }]);
+		expect(process.exitCode).toBeUndefined();
+	});
+
+	it("rejects unknown session patterns options", async () => {
+		await handlePublicCommand(["session", "patterns", "--nope"]);
+
+		expect(mocks.sessionPatternRuns).toEqual([]);
+		expect(process.exitCode).toBe(1);
+		expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Unknown option for session patterns"));
+	});
+
+	it("prints help for session patterns", async () => {
+		await expect(handlePublicCommand(["help", "session", "patterns"])).resolves.toMatchObject({ handled: true });
+
+		expect(mocks.sessionPatternRuns).toEqual([]);
+		expect(console.log).toHaveBeenCalledWith(expect.stringContaining("prime-agent session patterns"));
 	});
 
 	it("rejects operands for package list", async () => {

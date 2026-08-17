@@ -207,6 +207,21 @@ export {
 	type SessionStateStatus,
 	type ThinkingLevelChangeEntry,
 } from "./core/session-manager.js";
+export {
+	analyzeSessionFile,
+	analyzeSessionPatterns,
+	buildSessionPatternReport,
+	collectSessionFacts,
+	DEFAULT_SESSION_PATTERN_EXAMPLES,
+	isPromptSurfacePath,
+	SESSION_PATTERN_RULES,
+	type SessionCompactionFact,
+	type SessionFacts,
+	type SessionPatternExample,
+	type SessionPatternReport,
+	type SessionPatternResult,
+	type SessionPatternRule,
+} from "./core/session-patterns.js";
 export type { SessionStats } from "./core/session-stats.js";
 export {
 	type CompactionSettings,
