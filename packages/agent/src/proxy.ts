@@ -13,6 +13,7 @@ import {
 	parseStreamingJson,
 	type SimpleStreamOptions,
 	type StopReason,
+	streamSimple,
 	type ToolCall,
 } from "@earendil-works/pi-ai";
 
@@ -179,6 +180,7 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 			reader = response.body!.getReader();
 			const decoder = new TextDecoder();
 			let buffer = "";
+			let receivedTerminalEvent = false;
 
 			while (true) {
 				const { done, value } = await reader.read();
@@ -200,6 +202,9 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 							const event = processProxyEvent(proxyEvent, partial);
 							if (event) {
 								stream.push(event);
+								if (event.type === "done" || event.type === "error") {
+									receivedTerminalEvent = true;
+								}
 							}
 						}
 					}
@@ -210,6 +215,15 @@ export function streamProxy(model: Model<any>, context: Context, options: ProxyS
 				throw new Error("Request aborted by user");
 			}
 
+			if (!receivedTerminalEvent) {
+				partial.stopReason = "error";
+				partial.errorMessage = "Proxy stream ended without a terminal event";
+				stream.push({
+					type: "error",
+					reason: "error",
+					error: partial,
+				});
+			}
 			stream.end();
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -344,7 +358,7 @@ function processProxyEvent(
 					partial,
 				};
 			}
-			return undefined;
+			throw new Error("Received toolcall_end for non-toolCall content");
 		}
 
 		case "done":
@@ -364,4 +378,145 @@ function processProxyEvent(
 			return undefined;
 		}
 	}
+}
+
+/**
+ * Options for streamProxyWithFallback.
+ * `fallbackApiKey` and `fallbackBaseUrl` configure the direct-API fallback used when Hermes is unreachable.
+ */
+export interface ProxyWithFallbackOptions extends ProxyStreamOptions {
+	/** API key for the direct fallback provider (e.g. prime-inference key) */
+	fallbackApiKey?: string;
+	/** Base URL for the direct fallback provider — defaults to prime-inference */
+	fallbackBaseUrl?: string;
+}
+
+const PROXY_FATAL_PATTERNS = [
+	/proxy error/i,
+	/upstream failed/i,
+	/proxy stream ended without a terminal event/i,
+	/ECONNREFUSED/i,
+	/ECONNRESET/i,
+	/fetch failed/i,
+	/network error/i,
+	/bad gateway/i,
+	/service unavailable/i,
+	/gateway timeout/i,
+];
+
+function isProxyFailure(msg: string | undefined): boolean {
+	if (!msg) return false;
+	return PROXY_FATAL_PATTERNS.some((p) => p.test(msg));
+}
+
+/**
+ * Stream through Hermes (CLIProxy) with automatic fallback to direct provider API.
+ *
+ * Primary path: streamProxy → proxyUrl/api/stream (Hermes)
+ * Fallback path: streamSimple → direct provider API
+ *
+ * The fallback fires when the proxy returns stopReason "error" due to a connection
+ * or gateway failure (Hermes down, 502, stream dropped, etc.). Normal LLM errors
+ * (rate limits, content policy) propagate as-is without triggering fallback.
+ *
+ * @example
+ * ```typescript
+ * const agent = new Agent({
+ *   streamFn: (model, context, options) =>
+ *     streamProxyWithFallback(model, context, {
+ *       ...options,
+ *       authToken: await getAuthToken(),
+ *       proxyUrl: "http://localhost:3000",
+ *       fallbackApiKey: process.env.PRIME_INFERENCE_API_KEY,
+ *     }),
+ * });
+ * ```
+ */
+export function streamProxyWithFallback(
+	model: Model<any>,
+	context: Context,
+	options: ProxyWithFallbackOptions,
+): ProxyMessageEventStream {
+	const proxyStream = streamProxy(model, context, options);
+	const out = new ProxyMessageEventStream();
+
+	(async () => {
+		const events: AssistantMessageEvent[] = [];
+		let proxyResult: AssistantMessage | undefined;
+
+		for await (const event of proxyStream) {
+			events.push(event);
+		}
+
+		try {
+			proxyResult = await proxyStream.result();
+		} catch {
+			// handled below
+		}
+
+		const proxyFailed =
+			!proxyResult || (proxyResult.stopReason === "error" && isProxyFailure(proxyResult.errorMessage));
+
+		if (!proxyFailed) {
+			// Proxy succeeded — replay all events into out
+			for (const event of events) {
+				out.push(event);
+			}
+			out.end();
+			return;
+		}
+
+		// Proxy failed — fall back to direct streamSimple
+		console.warn(
+			`[proxy-fallback] Hermes unavailable (${proxyResult?.errorMessage ?? "unknown"}), falling back to direct API`,
+		);
+
+		const { fallbackApiKey, fallbackBaseUrl, authToken: _authToken, proxyUrl: _proxyUrl, ...rest } = options;
+
+		if (!fallbackApiKey) {
+			// No fallback key configured — surface the original proxy error
+			for (const event of events) {
+				out.push(event);
+			}
+			out.end();
+			return;
+		}
+
+		const fallbackModel: Model<any> = fallbackBaseUrl ? { ...model, baseUrl: fallbackBaseUrl } : model;
+
+		try {
+			const directStream = streamSimple(fallbackModel, context, {
+				...rest,
+				apiKey: fallbackApiKey,
+			});
+			for await (const event of directStream) {
+				out.push(event);
+			}
+			out.end();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			const partial: AssistantMessage = {
+				role: "assistant",
+				stopReason: "error",
+				errorMessage: `Proxy and fallback both failed: ${msg}`,
+				content: [],
+				api: model.api,
+				provider: model.provider,
+				model: model.id,
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now(),
+			};
+			out.push({ type: "error", reason: "error", error: partial });
+			out.end();
+		}
+	})();
+
+	return out;
 }
