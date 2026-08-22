@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getEnvApiKey } from "../src/env-api-keys.js";
-import { getModel } from "../src/models.js";
+import { getModel, getModels } from "../src/models.js";
 import { complete, stream } from "../src/stream.js";
 import type { Api, Context, ImageContent, Model, StreamOptions, Tool, ToolResultMessage } from "../src/types.js";
 import { getKimiCodingTestModel } from "./kimi-test-model.js";
@@ -726,38 +726,43 @@ describe("Generate E2E Tests", () => {
 		},
 	);
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !process.env.ANTHROPIC_API_KEY)(
-		"Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4-5 via /anthropic messages)",
-		() => {
-			const llm = getModel("cloudflare-ai-gateway", "claude-sonnet-4-5");
-			const options = { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}` } };
-			const thinkingOptions = {
-				...options,
-				thinkingEnabled: true,
-				reasoningEffort: "high",
-			} satisfies StreamOptionsWithExtras;
+	// models.dev renames these ids between catalog revisions (claude-sonnet-4-5 → claude-sonnet-4.5),
+	// so resolve the newest sonnet at runtime rather than pinning an id the next rename invalidates.
+	const cloudflareAnthropicSonnet = getModels("cloudflare-ai-gateway")
+		.filter((m) => m.api === "anthropic-messages" && m.id.startsWith("claude-sonnet-4"))
+		.sort((a, b) => b.id.localeCompare(a.id))[0];
 
-			it("should complete basic text generation", { retry: 3 }, async () => {
-				await basicTextGeneration(llm, options);
-			});
+	describe.skipIf(
+		!hasCloudflareAiGatewayCredentials() || !process.env.ANTHROPIC_API_KEY || !cloudflareAnthropicSonnet,
+	)("Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4.x via /anthropic messages)", () => {
+		const llm = cloudflareAnthropicSonnet;
+		const options = { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}` } };
+		const thinkingOptions = {
+			...options,
+			thinkingEnabled: true,
+			reasoningEffort: "high",
+		} satisfies StreamOptionsWithExtras;
 
-			it("should handle tool calling", { retry: 3 }, async () => {
-				await handleToolCall(llm, options);
-			});
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm, options);
+		});
 
-			it("should handle streaming", { retry: 3 }, async () => {
-				await handleStreaming(llm, options);
-			});
+		it("should handle tool calling", { retry: 3 }, async () => {
+			await handleToolCall(llm, options);
+		});
 
-			it("should handle thinking mode", { retry: 3 }, async () => {
-				await handleThinking(llm, thinkingOptions);
-			});
+		it("should handle streaming", { retry: 3 }, async () => {
+			await handleStreaming(llm, options);
+		});
 
-			it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-				await multiTurn(llm, thinkingOptions);
-			});
-		},
-	);
+		it("should handle thinking mode", { retry: 3 }, async () => {
+			await handleThinking(llm, thinkingOptions);
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
+			await multiTurn(llm, thinkingOptions);
+		});
+	});
 
 	describe.skipIf(!process.env.HF_TOKEN)("Hugging Face Provider (Kimi-K2.5 via OpenAI Completions)", () => {
 		const llm = getModel("huggingface", "moonshotai/Kimi-K2.5");
