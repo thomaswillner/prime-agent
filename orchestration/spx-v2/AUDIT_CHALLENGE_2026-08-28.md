@@ -131,7 +131,7 @@ strong reasoning agent (GPT 5.6 SOL under Codex, Prime Agent, Claude):
 5. **"mats skills"** — exist **on the MacBook harness** (operator-confirmed 2026-08-28,
    correcting this session's initial overclaim of nonexistence). They are not present in
    the V2 repo, the V1 repo, this repo, or this remote session's skill roster — and a
-   remote cloud session cannot see the MacBook-local harness (`~/.claude/skills`, OpenClaw
+   remote cloud session cannot see the MacBook-local harness (`~/.claude/skills`, local harness
    skills, Codex harness config), so repo/remote absence proved nothing about the estate.
    Consequence: "invoke mats skills" is executable only by an agent running **on the
    MacBook harness**. The corrected input routes them conditionally: a MacBook-local agent
