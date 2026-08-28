@@ -1,7 +1,27 @@
 import { getModels } from "../src/models.js";
-import type { Model } from "../src/types.js";
+import type { Api, Model } from "../src/types.js";
 
 const KIMI_TEST_MODEL_PREFERENCE = ["kimi-k2-thinking", "kimi-for-coding", "k2p7", "k3", "kimi-for-coding-highspeed"];
+
+// models.dev drops and renames Workers AI ids between catalog revisions
+// (workers-ai/@cf/moonshotai/kimi-k2.6 vanished from the cloudflare-ai-gateway
+// listing), so resolve the current /compat model at runtime rather than pinning
+// an id the next revision invalidates. Kimi ids are preferred to keep the
+// exercised model comparable across revisions; any workers-ai /compat model
+// keeps the transport tests alive when no Kimi is listed. Callers must guard
+// with skipIf: the result is undefined when the catalog lists no workers-ai
+// model at all. Everything here is typed against the Api base rather than the
+// provider's current api union — that union is itself regenerated from the
+// catalog, so narrowing against it breaks exactly when the catalog moves. The
+// final cast is safe because the generator emits every workers-ai/ gateway
+// entry as an openai-completions /compat route.
+export function getCloudflareGatewayWorkersAiTestModel(): Model<"openai-completions"> {
+	const gatewayModels: Model<Api>[] = getModels("cloudflare-ai-gateway");
+	const models = gatewayModels.filter((model) => model.id.startsWith("workers-ai/"));
+	const kimis = models.filter((model) => model.id.includes("/moonshotai/kimi-"));
+	const pool = kimis.length > 0 ? kimis : models;
+	return pool.sort((a, b) => b.id.localeCompare(a.id))[0] as Model<"openai-completions">;
+}
 
 export function getKimiCodingTestModel(options: { image?: boolean } = {}): Model<"anthropic-messages"> {
 	const models = getModels("kimi-coding") as Model<"anthropic-messages">[];

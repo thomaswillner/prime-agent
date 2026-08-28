@@ -8,7 +8,7 @@ import { getEnvApiKey } from "../src/env-api-keys.js";
 import { getModel, getModels } from "../src/models.js";
 import { complete, stream } from "../src/stream.js";
 import type { Api, Context, ImageContent, Model, StreamOptions, Tool, ToolResultMessage } from "../src/types.js";
-import { getKimiCodingTestModel } from "./kimi-test-model.js";
+import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -666,10 +666,14 @@ describe("Generate E2E Tests", () => {
 		},
 	);
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials())(
-		"Cloudflare AI Gateway → Workers AI (Kimi K2.6 via /compat)",
+	// models.dev also drops Workers AI ids between catalog revisions
+	// (workers-ai/@cf/moonshotai/kimi-k2.6 vanished), so resolve instead of pin.
+	const cloudflareGatewayWorkersAi = getCloudflareGatewayWorkersAiTestModel();
+
+	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
+		"Cloudflare AI Gateway → Workers AI (via /compat)",
 		() => {
-			const llm = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+			const llm = cloudflareGatewayWorkersAi;
 
 			it("should complete basic text generation", { retry: 3 }, async () => {
 				await basicTextGeneration(llm);
