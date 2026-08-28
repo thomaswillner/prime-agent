@@ -37,7 +37,7 @@ Purpose: future sessions read this file first and do not repeat these mistakes.
    This session searched the three repos and the remote session's skill roster, found
    nothing, and declared the skills nonexistent and "struck". The operator corrected:
    **mats and superpowers skills exist on the MacBook harness**, which a remote cloud
-   session cannot see (`~/.claude/skills`, OpenClaw skills, Codex harness config).
+   session cannot see (`~/.claude/skills`, local harness skills, Codex harness config).
    Correction applied to both documents: conditional routing (MacBook-local agents
    enumerate and invoke harness skills; remote agents fall back to repo conventions and say
    so), and S0 now inventories the harness skills as part of runtime identity. Lesson:
