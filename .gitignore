@@ -16,7 +16,9 @@ packages/*/dist-firefox/
 .vscode/
 .zed/
 .idea/
-.claude/
+.claude/prime-state/
+.claude/settings.local.json
+.claude/worktrees/
 *.swp
 *.swo
 *~
