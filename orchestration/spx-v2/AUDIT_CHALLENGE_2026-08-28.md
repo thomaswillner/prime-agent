@@ -128,17 +128,25 @@ strong reasoning agent (GPT 5.6 SOL under Codex, Prime Agent, Claude):
 4. **"Self refinement"** — compliant and already a repo convention: append errors and
    corrections to `.learnings/ERRORS.md` and `.learnings/LEARNINGS.md` in the V2 repo so
    future sessions do not repeat them. The instruction should name those files (it did not).
-5. **"mats skills"** — **does not exist**. Zero matches in the V2 repo, V1 repo, this repo,
-   and the operator's enabled skill roster (checked 2026-08-28). Presumed typo or artifact
-   of an earlier prompt. **Struck** from the corrected input; if the operator meant something
-   specific, it must be named and defined.
-6. **"superpower skills"** — exists, but as a **repo convention**, not an agent plugin:
-   `.superpowers/` and `docs/superpowers/{plans,specs}` implement spec-driven development
-   (plan + spec before implementation). Any agent can follow it by writing those files; a
-   GPT/Codex agent cannot "invoke" Claude-plugin skills, so the corrected input phrases this
-   as a repo process, which is agent-portable. (In this verification session, the genuinely
-   relevant enabled skills — `trading-intelligence` — were loaded; `project-tracker` was
-   evaluated and skipped: its project list contains no SPX entry.)
+5. **"mats skills"** — exist **on the MacBook harness** (operator-confirmed 2026-08-28,
+   correcting this session's initial overclaim of nonexistence). They are not present in
+   the V2 repo, the V1 repo, this repo, or this remote session's skill roster — and a
+   remote cloud session cannot see the MacBook-local harness (`~/.claude/skills`, OpenClaw
+   skills, Codex harness config), so repo/remote absence proved nothing about the estate.
+   Consequence: "invoke mats skills" is executable only by an agent running **on the
+   MacBook harness**. The corrected input routes them conditionally: a MacBook-local agent
+   enumerates its harness skills at session start and routes through mats wherever it
+   applies (S0 records the harness skill inventory as part of runtime identity); a remote
+   agent states it cannot reach them and uses the repo conventions alone.
+6. **"superpower skills"** — exist in **two layers**: a MacBook-harness skill set
+   (operator-confirmed, same visibility caveat as above) and the V2 repo's SDD convention
+   (`.superpowers/`, `docs/superpowers/{plans,specs}`: plan + spec before implementation).
+   The repo convention is the portable projection every agent must satisfy — committed
+   plan/spec artifacts are what reviewers and future sessions can see — and a
+   MacBook-local agent additionally invokes the harness superpowers skills that
+   generate/enforce them. (In this remote verification session, the genuinely relevant
+   enabled skills — `trading-intelligence` — were loaded; `project-tracker` was evaluated
+   and skipped: its project list contains no SPX entry.)
 
 Bottom line: instructions rewritten as the **Method contract** in
 [`PRIME_AGENT_INPUT_SPX_V2.md`](PRIME_AGENT_INPUT_SPX_V2.md) §7. That form is executable by

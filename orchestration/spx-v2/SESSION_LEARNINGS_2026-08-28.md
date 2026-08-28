@@ -33,13 +33,24 @@ Purpose: future sessions read this file first and do not repeat these mistakes.
    is a superseding decision row first, then code; the divergence gate auto-INERTs under
    proxy max pain (`settings.py:27`). Lesson: check `DECISIONS_LOG.md` before calling any
    behavior a defect — it is the top authority in this repo.
+6. **Overclaimed nonexistence of "mats skills" from a remote vantage (operator-corrected).**
+   This session searched the three repos and the remote session's skill roster, found
+   nothing, and declared the skills nonexistent and "struck". The operator corrected:
+   **mats and superpowers skills exist on the MacBook harness**, which a remote cloud
+   session cannot see (`~/.claude/skills`, OpenClaw skills, Codex harness config).
+   Correction applied to both documents: conditional routing (MacBook-local agents
+   enumerate and invoke harness skills; remote agents fall back to repo conventions and say
+   so), and S0 now inventories the harness skills as part of runtime identity. Lesson:
+   state absence claims with their searched scope ("not found in X, Y, Z"), never
+   absolutely — the operator's estate is always larger than a remote sandbox's view.
 
 ## Interpretation map for the operator's prompt (typo decode, kept for consistency)
 
 "OREPARE"→prepare · "ORIME AGENT"→Prime Agent · "YSER"→user · "WIRKS OR NIT"→works or not ·
 "LIGIN"→login · "IR OAPER"→or paper · "UF"→if · "EHEN SWITCTCHING"→when switching ·
 "ENFIRCED"→enforced · "CIRRECT"→correct · "sox/Sox 0dte"→spx-0dte-bot (V1) ·
-"GOT 5.6 SOL"→GPT 5.6 SOL · "mats skills"→nonexistent (struck; operator to define if meant).
+"GOT 5.6 SOL"→GPT 5.6 SOL · "mats/mat skills"→MacBook-harness skill set (operator-confirmed;
+not visible from remote sessions or the repos — enumerate locally at session start).
 
 ## Verified-fact anchors (do not re-derive; re-verify only if HEAD moved)
 

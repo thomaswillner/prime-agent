@@ -162,7 +162,9 @@ refusal is unexplained.
 - **S0 — Runtime identity + truth.** Build a deterministic runtime whose imports resolve
   exactly current `origin/main` (fresh worktree + fresh `.venv` via `make v2-install`;
   record commit, tree, interpreter, and package origins into a startup identity report
-  exposed on `/readiness`). Fix **#230** (one accessor; display = submission truth; keep the
+  exposed on `/readiness`; additionally inventory the MacBook harness skills — mats,
+  superpowers, and the rest — into the S0 plan so later slices route through them
+  deliberately). Fix **#230** (one accessor; display = submission truth; keep the
   shipped-default-off pin untouched). Safety action for the operator, documented in the PR:
   set the Mac config's `execution.mode: off` explicitly until S4. Exit: operator starts SPX
   in `PAPER/OFF`; `/readiness` shows real build identity, honest mode, and the two session
@@ -227,11 +229,16 @@ slice's real evidence.
   `.learnings/ERRORS.md` / `.learnings/LEARNINGS.md` in the V2 repo (existing convention)
   in the same PR when repo-relevant; session-scoped notes live in the orchestration repo.
   Future sessions read these before starting.
-- **Superpowers = the repo's SDD process:** for each slice write
-  `docs/superpowers/plans/<date>-<slug>.md` and, where design is non-trivial,
-  `docs/superpowers/specs/<date>-<slug>-design.md`, before implementation — the existing
-  fourteen plans are the format reference. ("mats skills" does not exist anywhere and is
-  struck; if the operator meant something, it must be defined first.)
+- **Harness skills (mats + superpowers) and the repo's SDD process:** the "mats" and
+  "superpowers" skill sets live **on the MacBook harness** (operator-confirmed 2026-08-28;
+  invisible from remote sessions — they are not in the repos). An agent running on the
+  MacBook MUST enumerate its local harness skills at session start and route work through
+  the mats and superpowers skills wherever they apply; a remote agent states that it cannot
+  reach them and uses the repo conventions alone. Portable floor for every agent, harness
+  skills or not: for each slice write `docs/superpowers/plans/<date>-<slug>.md` and, where
+  design is non-trivial, `docs/superpowers/specs/<date>-<slug>-design.md`, before
+  implementation — the existing fourteen plans are the format reference. Committed
+  artifacts are the proof; a harness-skill run that leaves no repo artifact does not count.
 - **Drift control:** at each iteration boundary, check work against §1 (mission), §5
   (current slice), §9 (forbidden). On drift: stop, record in the session learnings file,
   return to the slice. When the slice's exit criteria are met: **stop**, report changes, and
