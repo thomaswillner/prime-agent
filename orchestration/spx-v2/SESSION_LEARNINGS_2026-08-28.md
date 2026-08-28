@@ -44,6 +44,26 @@ Purpose: future sessions read this file first and do not repeat these mistakes.
    state absence claims with their searched scope ("not found in X, Y, Z"), never
    absolutely — the operator's estate is always larger than a remote sandbox's view.
 
+7. **Catalog-shape-dependent typing in the catalog-drift fix itself (cost one CI cycle).**
+   The first resolver narrowed against `cloudflare-ai-gateway`'s current api union (type
+   predicate + `api ===` comparison). That union is regenerated from the live catalog, so
+   when CI's regeneration dropped every workers-ai /compat entry the predicate, comparison,
+   and return type became provably impossible (TS2677/TS2367/TS2322). Correction
+   (`f012e79`): type intermediates as `Model<Api>[]` (widening, valid under any catalog),
+   filter by id prefix, narrow only the final result with a generator-guaranteed cast —
+   then prove it by temporarily stripping the workers-ai entries from
+   `models.generated.ts` locally (tsgo clean; 460 skips, 0 failures) before pushing.
+   Lessons: in this repo, never let test types reference a provider's *current* api union;
+   and local validation against the checked-in catalog does not cover CI, which
+   regenerates — simulate the regenerated shape before pushing catalog-related changes.
+8. **Committed on the wrong branch after a cherry-pick (caught immediately, no damage).**
+   After cherry-picking the fix onto PR #6's branch, the next commit was made without
+   switching back, landing the follow-up on the docs branch while the fix branch's push
+   reported "Everything up-to-date" — that push message was the tell. Correction: push
+   where it landed (PR #6 needed it anyway), cherry-pick onto the fix branch, push both.
+   Lesson: `git branch --show-current` before every commit in multi-branch sessions, and
+   treat an unexpected "Everything up-to-date" as an error signal, never as success.
+
 ## Interpretation map for the operator's prompt (typo decode, kept for consistency)
 
 "OREPARE"→prepare · "ORIME AGENT"→Prime Agent · "YSER"→user · "WIRKS OR NIT"→works or not ·
