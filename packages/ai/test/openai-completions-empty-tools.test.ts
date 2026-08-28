@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getModel } from "../src/models.js";
 import { streamSimple } from "../src/stream.js";
 import type { Model } from "../src/types.js";
+import { getCloudflareGatewayWorkersAiTestModel } from "./kimi-test-model.js";
+
+// models.dev drops Workers AI ids between catalog revisions, so resolve instead of pin.
+const cloudflareGatewayWorkersAi = getCloudflareGatewayWorkersAiTestModel();
 
 // Empty tools arrays must NOT be serialized as `tools: []` — some OpenAI-compatible
 // backends (e.g. DashScope / Aliyun Qwen via compatible-mode) reject the request with
@@ -94,41 +98,44 @@ describe("openai-completions empty tools handling", () => {
 		expect("tools" in (params as object)).toBe(false);
 	});
 
-	it("uses conservative OpenAI-compatible fields for Cloudflare AI Gateway /compat models", async () => {
-		process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
-		process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
-		const model = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6")!;
+	it.skipIf(!cloudflareGatewayWorkersAi)(
+		"uses conservative OpenAI-compatible fields for Cloudflare AI Gateway /compat models",
+		async () => {
+			process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
+			process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
+			const model = cloudflareGatewayWorkersAi;
 
-		await streamSimple(
-			model,
-			{
-				systemPrompt: "You are helpful.",
-				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
-			},
-			{ apiKey: "test", reasoning: "high" },
-		).result();
+			await streamSimple(
+				model,
+				{
+					systemPrompt: "You are helpful.",
+					messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
+				},
+				{ apiKey: "test", reasoning: "high" },
+			).result();
 
-		const params = mockState.lastParams as {
-			messages: Array<{ role: string }>;
-			max_tokens?: number;
-			max_completion_tokens?: number;
-			reasoning_effort?: string;
-			store?: boolean;
-		};
-		expect(params.messages[0].role).toBe("system");
-		expect(params.max_tokens).toBeDefined();
-		expect(params.max_completion_tokens).toBeUndefined();
-		expect(params.reasoning_effort).toBeUndefined();
-		expect(params.store).toBeUndefined();
+			const params = mockState.lastParams as {
+				messages: Array<{ role: string }>;
+				max_tokens?: number;
+				max_completion_tokens?: number;
+				reasoning_effort?: string;
+				store?: boolean;
+			};
+			expect(params.messages[0].role).toBe("system");
+			expect(params.max_tokens).toBeDefined();
+			expect(params.max_completion_tokens).toBeUndefined();
+			expect(params.reasoning_effort).toBeUndefined();
+			expect(params.store).toBeUndefined();
 
-		const clientOptions = mockState.lastClientOptions as {
-			baseURL?: string;
-			defaultHeaders?: Record<string, unknown>;
-		};
-		expect(clientOptions.baseURL).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat");
-		expect(clientOptions.defaultHeaders?.Authorization).toBeNull();
-		expect(clientOptions.defaultHeaders?.["cf-aig-authorization"]).toBe("Bearer test");
-	});
+			const clientOptions = mockState.lastClientOptions as {
+				baseURL?: string;
+				defaultHeaders?: Record<string, unknown>;
+			};
+			expect(clientOptions.baseURL).toBe("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/compat");
+			expect(clientOptions.defaultHeaders?.Authorization).toBeNull();
+			expect(clientOptions.defaultHeaders?.["cf-aig-authorization"]).toBe("Bearer test");
+		},
+	);
 
 	it("uses OpenAI reasoning fields for an explicitly configured private Prime Inference route", async () => {
 		const model: Model<"openai-completions"> = {
@@ -179,24 +186,27 @@ describe("openai-completions empty tools handling", () => {
 		expect(clientOptions.defaultHeaders?.["cf-aig-authorization"]).toBe("Bearer cf-token");
 	});
 
-	it("sends session affinity headers for Workers AI through Cloudflare AI Gateway", async () => {
-		process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
-		process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
-		const workersModel = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6")!;
+	it.skipIf(!cloudflareGatewayWorkersAi)(
+		"sends session affinity headers for Workers AI through Cloudflare AI Gateway",
+		async () => {
+			process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
+			process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
+			const workersModel = cloudflareGatewayWorkersAi;
 
-		await streamSimple(
-			workersModel,
-			{
-				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
-			},
-			{ apiKey: "test", sessionId: "session-1" },
-		).result();
+			await streamSimple(
+				workersModel,
+				{
+					messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
+				},
+				{ apiKey: "test", sessionId: "session-1" },
+			).result();
 
-		const clientOptions = mockState.lastClientOptions as { defaultHeaders?: Record<string, string> };
-		expect(clientOptions.defaultHeaders?.session_id).toBe("session-1");
-		expect(clientOptions.defaultHeaders?.["x-client-request-id"]).toBe("session-1");
-		expect(clientOptions.defaultHeaders?.["x-session-affinity"]).toBe("session-1");
-	});
+			const clientOptions = mockState.lastClientOptions as { defaultHeaders?: Record<string, string> };
+			expect(clientOptions.defaultHeaders?.session_id).toBe("session-1");
+			expect(clientOptions.defaultHeaders?.["x-client-request-id"]).toBe("session-1");
+			expect(clientOptions.defaultHeaders?.["x-session-affinity"]).toBe("session-1");
+		},
+	);
 
 	it("still emits tools: [] for Anthropic/LiteLLM proxy when conversation has tool history", async () => {
 		const { compat: _compat, ...baseModel } = getModel("openai", "gpt-4o-mini")!;

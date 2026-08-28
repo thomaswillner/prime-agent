@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Api, AssistantMessage, Context, Model, StreamOptions, UserMessage } from "../src/types.js";
-import { getKimiCodingTestModel } from "./kimi-test-model.js";
+import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -329,25 +329,31 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials())("Cloudflare AI Gateway Provider Empty Messages", () => {
-		const llm = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+	// models.dev drops Workers AI ids between catalog revisions, so resolve instead of pin.
+	const cloudflareGatewayWorkersAi = getCloudflareGatewayWorkersAiTestModel();
 
-		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyMessage(llm);
-		});
+	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
+		"Cloudflare AI Gateway Provider Empty Messages",
+		() => {
+			const llm = cloudflareGatewayWorkersAi;
 
-		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyStringMessage(llm);
-		});
+			it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
+				await testEmptyMessage(llm);
+			});
 
-		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
-			await testWhitespaceOnlyMessage(llm);
-		});
+			it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
+				await testEmptyStringMessage(llm);
+			});
 
-		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyAssistantMessage(llm);
-		});
-	});
+			it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
+				await testWhitespaceOnlyMessage(llm);
+			});
+
+			it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
+				await testEmptyAssistantMessage(llm);
+			});
+		},
+	);
 
 	describe.skipIf(!process.env.HF_TOKEN)("Hugging Face Provider Empty Messages", () => {
 		const llm = getModel("huggingface", "moonshotai/Kimi-K2.5");
