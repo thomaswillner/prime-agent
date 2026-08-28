@@ -1,19 +1,17 @@
 # Prime Agent delegation gate
 
 One rule, enforced by Claude Code hooks: **coding and development work in this repo
-is done by the prime-agent subagent, not the main thread.** The methodology the
-prime-agent applies (RAG -> ToT -> CoT -> implement -> self-refine) is defined as
-instructions in `CLAUDE.md` and `.claude/agents/prime-agent.md`; the hooks do not
-police methodology phases - they only guarantee the prime-agent is actually invoked.
+is done by the prime-agent subagent, not the main thread.** Nothing else is policed -
+the gate only guarantees the prime-agent is actually invoked.
 
 ## Why a hook at all
 
-`CLAUDE.md` is auto-loaded into every session and the `UserPromptSubmit` hook
-re-injects the mandate on every prompt, so the instruction layer is always present,
-including after context compaction. The one thing instructions cannot do is bind: a
-drifting session could still edit directly. The `PreToolUse` gate closes that path
-mechanically - the harness executes hooks on every matching tool call, outside the
-model's control.
+`CLAUDE.md` is auto-loaded into every session and a short `UserPromptSubmit`
+injection repeats the mandate on every prompt, so the instruction layer is always
+present, including after context compaction. The one thing instructions cannot do is
+bind: a drifting session could still edit directly. The `PreToolUse` gate closes
+that path mechanically - the harness executes hooks on every matching tool call,
+outside the model's control.
 
 ## Mechanics (all in `.claude/hooks/prime_enforcer.py`)
 
@@ -22,7 +20,7 @@ model's control.
 | `PreToolUse` on `Edit\|MultiEdit\|Write\|NotebookEdit` | Deny modifications of repo files while the gate is closed. Paths outside the repo are exempt. Every denial repeats the delegation instruction. |
 | `PreToolUse` on `Bash` | Same for mutating commands: `git commit/push/merge/...`, `sed/perl -i`, redirects and `tee` into repo paths (quote-aware), package installs, `--write`/`--fix` fixers, file utilities aimed at repo paths. Read-only commands always pass. Direct access to `.claude/prime-state` is denied and logged as `TAMPER`. |
 | `SubagentStart` / `SubagentStop` | Open/close the gate when the payload identifies a `prime-agent` run. |
-| `SessionStart` / `UserPromptSubmit` | Inject the mandate plus live gate state. |
+| `SessionStart` / `UserPromptSubmit` | Inject a short mandate line plus live gate state. |
 
 Gate state (`.claude/prime-state/gate.json`, gitignored):
 
@@ -59,9 +57,9 @@ audit log shows whether the mandate was honored.
 ## File map
 
 ```
-CLAUDE.md                        mandate + methodology (auto-loaded)
+CLAUDE.md                        mandate (auto-loaded)
 .claude/settings.json            hook wiring + PRIME_ENFORCE default
 .claude/hooks/prime_enforcer.py  gate: hook dispatcher + status/open/close CLI
-.claude/agents/prime-agent.md    the implementation subagent (methodology lives here)
+.claude/agents/prime-agent.md    the implementation subagent
 .claude/prime-state/             gate state + compliance.log (gitignored)
 ```

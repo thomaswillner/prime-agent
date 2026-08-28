@@ -4,9 +4,7 @@
 One rule, enforced deterministically by Claude Code hooks: coding and
 development work in this repo is done by the prime-agent subagent, not the
 main thread. File edits and mutating shell commands are denied unless a
-prime-agent run is active or recently finished. The methodology itself
-(RAG -> ToT -> CoT -> implement -> self-refine) lives in CLAUDE.md and
-.claude/agents/prime-agent.md as instructions, not in this gate.
+prime-agent run is active or recently finished. Nothing else is policed.
 
 Hook mode (no argv; hook JSON on stdin, routed on hook_event_name):
   SubagentStart / SubagentStop  -> open/close the gate for prime-agent runs
@@ -158,14 +156,12 @@ def in_state_dir(path):
 def deny_reason(why):
     return "\n".join([
         "PRIME AGENT GATE: blocked (%s)." % why,
-        "All coding and development work in this repository is performed by the",
-        "prime-agent subagent (.claude/agents/prime-agent.md), which applies the",
-        "mandated methodology: RAG -> ToT -> CoT -> implement -> self-refine.",
-        "Delegate now: call the Task tool with subagent_type \"prime-agent\" and hand",
-        "it the complete task. Its edits and commands pass this gate automatically,",
-        "and the gate stays open for a grace window afterwards so the main thread",
-        "can commit and push its work.",
-        "Pure research, questions, and read-only commands are never blocked.",
+        "Coding and development work in this repository is done by the prime-agent",
+        "subagent, not the main thread. Delegate now: call the Task tool with",
+        "subagent_type \"prime-agent\" and hand it the complete task. Its edits and",
+        "commands pass this gate automatically, and the gate stays open for a grace",
+        "window afterwards so the main thread can commit and push its work.",
+        "Research, questions, and read-only commands are never blocked.",
         "Inspect: python3 .claude/hooks/prime_enforcer.py status  (docs: .claude/ENFORCEMENT.md)",
     ])
 
@@ -277,15 +273,10 @@ def state_line():
 
 def handle_user_prompt_submit(_data):
     context = (
-        "[PRIME AGENT MANDATE - ENFORCED BY HOOKS]\n"
-        "Any coding or development work in this repo (editing files, committing,\n"
-        "anything that mutates the working tree) MUST be delegated to the prime-agent\n"
-        "subagent (Task tool, subagent_type \"prime-agent\"). It applies the mandated\n"
-        "methodology: RAG -> ToT -> CoT -> implement -> self-refine (see CLAUDE.md).\n"
-        "PreToolUse hooks deny direct edits and mutating commands in the main thread;\n"
-        "the gate opens automatically while prime-agent runs and for a grace window\n"
-        "afterwards so you can commit and push its work. Research and questions are\n"
-        "unrestricted. Current state: " + state_line()
+        "[PRIME MANDATE] Coding/development work in this repo must be delegated to\n"
+        "the prime-agent subagent (Task tool, subagent_type \"prime-agent\"); hooks\n"
+        "deny direct edits and mutating commands in the main thread. Research is\n"
+        "unrestricted. State: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
@@ -298,14 +289,12 @@ def handle_user_prompt_submit(_data):
 def handle_session_start(data):
     log_event("SESSION_START", data.get("session_id", ""))
     context = (
-        "[PRIME AGENT BRIEFING]\n"
-        "This repository routes all coding and development work through the prime-agent\n"
-        "subagent; hooks deny direct file edits and mutating shell commands in the main\n"
-        "thread (see CLAUDE.md and .claude/ENFORCEMENT.md). Delegate implementation\n"
-        "tasks with the Task tool, subagent_type \"prime-agent\"; the subagent works\n"
-        "under the mandated methodology (RAG -> ToT -> CoT -> implement -> self-refine)\n"
-        "and its edits pass the gate automatically. After it finishes, a grace window\n"
-        "lets the main thread commit and push the result. Current state: " + state_line()
+        "[PRIME BRIEFING] This repository routes all coding and development work\n"
+        "through the prime-agent subagent; hooks deny direct file edits and mutating\n"
+        "shell commands in the main thread (see CLAUDE.md, .claude/ENFORCEMENT.md).\n"
+        "Delegate with the Task tool, subagent_type \"prime-agent\"; its edits pass\n"
+        "the gate, and a grace window after each run lets the main thread commit and\n"
+        "push the result. State: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
