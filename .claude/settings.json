@@ -10,7 +10,7 @@
 						"type": "command",
 						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
 						"timeout": 15,
-						"statusMessage": "Loading Prime Agent protocol briefing"
+						"statusMessage": "Loading Prime Agent mandate"
 					}
 				]
 			}
@@ -34,7 +34,7 @@
 						"type": "command",
 						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
 						"timeout": 15,
-						"statusMessage": "Prime protocol gate"
+						"statusMessage": "Prime Agent delegation gate"
 					}
 				]
 			},
@@ -45,14 +45,13 @@
 						"type": "command",
 						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
 						"timeout": 15,
-						"statusMessage": "Prime protocol gate"
+						"statusMessage": "Prime Agent delegation gate"
 					}
 				]
 			}
 		],
-		"PostToolUse": [
+		"SubagentStart": [
 			{
-				"matcher": "Edit|MultiEdit|Write|NotebookEdit",
 				"hooks": [
 					{
 						"type": "command",
@@ -62,14 +61,13 @@
 				]
 			}
 		],
-		"Stop": [
+		"SubagentStop": [
 			{
 				"hooks": [
 					{
 						"type": "command",
 						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
-						"timeout": 15,
-						"statusMessage": "Prime protocol stop gate"
+						"timeout": 15
 					}
 				]
 			}

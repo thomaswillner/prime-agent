@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""Prime Agent protocol enforcer, wired as Claude Code hooks.
+"""Prime Agent delegation gate.
 
-One entry point for every hook event (routed on hook_event_name from stdin):
-  SessionStart     -> inject the protocol briefing
-  UserPromptSubmit -> inject the mandate plus live protocol state
-  PreToolUse       -> deny Edit/Write/NotebookEdit and mutating Bash commands
-                      until the recorded protocol evidence validates
-  PostToolUse      -> count gated edits (drives the refine requirement)
-  Stop             -> block ending the turn while edits lack a passing refine
+One rule, enforced deterministically by Claude Code hooks: coding and
+development work in this repo is done by the prime-agent subagent, not the
+main thread. File edits and mutating shell commands are denied unless a
+prime-agent run is active or recently finished. The methodology itself
+(RAG -> ToT -> CoT -> implement -> self-refine) lives in CLAUDE.md and
+.claude/agents/prime-agent.md as instructions, not in this gate.
 
-The harness executes these hooks deterministically; the model cannot skip
-them. Escape hatches (all audited or explicit): PRIME_ENFORCE=0 disables
-gating, the express lane in prime_protocol.py logs a justification, and the
-Stop gate yields after PRIME_MAX_STOP_BLOCKS to avoid livelock.
+Hook mode (no argv; hook JSON on stdin, routed on hook_event_name):
+  SubagentStart / SubagentStop  -> open/close the gate for prime-agent runs
+  PreToolUse                    -> deny edits and mutating Bash while closed
+  SessionStart / UserPromptSubmit -> inject the mandate and gate state
+
+CLI mode:
+  python3 .claude/hooks/prime_enforcer.py status|open|close
+
+Env: PRIME_ENFORCE=0 disables the gate. PRIME_GRACE_MINUTES (default 30)
+keeps the gate open after a prime-agent run so the main thread can commit
+and push its work. PRIME_ACTIVE_CAP_HOURS (default 4) bounds a run that
+never reports stopping. Every open, close, and denial is logged to
+.claude/prime-state/compliance.log.
 """
 
 import json
@@ -21,12 +29,10 @@ import re
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import prime_protocol as proto
-
+DEFAULT_GRACE_MINUTES = 30.0
+DEFAULT_ACTIVE_CAP_HOURS = 4.0
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
 SAFE_WRITE_PREFIXES = ("/dev/", "/tmp/", "/proc/")
-DEFAULT_MAX_STOP_BLOCKS = 3
 
 GIT_WRITE_RE = re.compile(r"\bgit\s+(?:[a-z-]+\s+)*?(commit|push|merge|rebase|cherry-pick|revert|am|apply)\b")
 INPLACE_EDIT_RE = re.compile(r"\b(?:sed|perl)\b[^|;&]*\s-[a-zA-Z]*i")
@@ -37,15 +43,101 @@ FILE_MUTATE_RE = re.compile(r"(?:^|[;&|]\s*|\$\()\s*(?:sudo\s+)?(mv|cp|rm|touch|
 REDIRECT_RE = re.compile(r"(?<![<>=\-\d&])>{1,2}(?!&)\s*([^\s;|&)]*)")
 
 
+def repo_root():
+    env = os.environ.get("CLAUDE_PROJECT_DIR")
+    if env:
+        return os.path.realpath(env)
+    return os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+
+def state_dir():
+    return os.path.join(repo_root(), ".claude", "prime-state")
+
+
+def gate_path():
+    return os.path.join(state_dir(), "gate.json")
+
+
+def log_path():
+    return os.path.join(state_dir(), "compliance.log")
+
+
 def enforcement_on():
     return os.environ.get("PRIME_ENFORCE", "1") != "0"
 
 
-def max_stop_blocks():
+def grace_seconds():
     try:
-        return int(os.environ.get("PRIME_MAX_STOP_BLOCKS", DEFAULT_MAX_STOP_BLOCKS))
+        return float(os.environ.get("PRIME_GRACE_MINUTES", DEFAULT_GRACE_MINUTES)) * 60
     except ValueError:
-        return DEFAULT_MAX_STOP_BLOCKS
+        return DEFAULT_GRACE_MINUTES * 60
+
+
+def active_cap_seconds():
+    try:
+        return float(os.environ.get("PRIME_ACTIVE_CAP_HOURS", DEFAULT_ACTIVE_CAP_HOURS)) * 3600
+    except ValueError:
+        return DEFAULT_ACTIVE_CAP_HOURS * 3600
+
+
+def load_gate():
+    try:
+        with open(gate_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return {"active_until": float(data.get("active_until", 0)),
+                    "last_run_at": float(data.get("last_run_at", 0)),
+                    "opened_by": str(data.get("opened_by", ""))}
+    except (OSError, ValueError):
+        pass
+    return {"active_until": 0.0, "last_run_at": 0.0, "opened_by": ""}
+
+
+def save_gate(gate):
+    os.makedirs(state_dir(), exist_ok=True)
+    tmp = gate_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(gate, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, gate_path())
+
+
+def log_event(event, detail=""):
+    os.makedirs(state_dir(), exist_ok=True)
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    with open(log_path(), "a", encoding="utf-8") as f:
+        f.write("%s | %s | %s\n" % (stamp, event, detail.replace("\n", " ")[:500]))
+
+
+def gate_open(now=None):
+    """Return (open, why)."""
+    now = now if now is not None else time.time()
+    gate = load_gate()
+    if now < gate["active_until"]:
+        return True, "prime-agent run active (%s)" % (gate["opened_by"] or "unknown")
+    grace = grace_seconds()
+    if gate["last_run_at"] and (now - gate["last_run_at"]) < grace:
+        left = int((grace - (now - gate["last_run_at"])) / 60)
+        return True, "grace window after a prime-agent run (~%dm left)" % max(left, 1)
+    return False, "no active or recent prime-agent run"
+
+
+def open_gate(source):
+    now = time.time()
+    gate = load_gate()
+    gate["active_until"] = now + active_cap_seconds()
+    gate["opened_by"] = source
+    save_gate(gate)
+    log_event("GATE_OPEN", source)
+
+
+def close_gate(source):
+    now = time.time()
+    gate = load_gate()
+    gate["active_until"] = 0.0
+    gate["last_run_at"] = now
+    save_gate(gate)
+    log_event("GATE_CLOSE", source)
 
 
 def respond(payload):
@@ -53,51 +145,29 @@ def respond(payload):
 
 
 def under_root(path):
-    root = proto.repo_root() + os.sep
-    real = os.path.realpath(path if os.path.isabs(path) else os.path.join(proto.repo_root(), path))
+    root = repo_root() + os.sep
+    real = os.path.realpath(path if os.path.isabs(path) else os.path.join(repo_root(), path))
     return real.startswith(root), real
 
 
 def in_state_dir(path):
     ok, real = under_root(path)
-    return ok and real.startswith(os.path.realpath(proto.state_dir()))
-
-
-def gate_summary(state):
-    complete, missing, expired = proto.protocol_status(state)
-    if complete:
-        return True, ""
-    if expired:
-        why = "the recorded protocol EXPIRED (idle longer than PRIME_TTL_HOURS); open a fresh cycle"
-    else:
-        why = "missing phases: " + ", ".join(missing)
-    return False, why
+    return ok and real.startswith(os.path.realpath(state_dir()))
 
 
 def deny_reason(why):
-    lines = [
-        "PRIME AGENT PROTOCOL GATE: blocked (%s)." % why,
-        "All coding and development work in this repo MUST run the Prime Agent pipeline",
-        "(RAG -> ToT -> CoT -> implement -> self-refine) and record evidence first:",
-        "1. RAG: read the relevant code/docs, then record what grounds the change:",
-        "   python3 .claude/hooks/prime_protocol.py rag --task \"<work item>\" \\",
-        "     --source <file:lines> --source <file:lines> --source <file:lines> \\",
-        "     --summary \"<what retrieval established, >=200 chars>\"",
-        "2. ToT: explore >=3 candidate approaches, pick one:",
-        "   python3 .claude/hooks/prime_protocol.py tot --approach \"A :: <desc>\" \\",
-        "     --approach \"B :: <desc>\" --approach \"C :: <desc>\" \\",
-        "     --chosen \"A\" --rationale \"<why A, why not B/C, >=120 chars>\"",
-        "3. CoT: commit to an explicit step plan:",
-        "   python3 .claude/hooks/prime_protocol.py cot --step \"...\" (x5+) --risk \"...\"",
-        "Then retry this action. After implementing, run the repo checks and record",
-        "  python3 .claude/hooks/prime_protocol.py refine --checks \"...\" --verdict pass",
-        "before ending the turn.",
-    ]
-    if not proto.strict_mode():
-        lines.append("Genuinely trivial change? Audited fast path:")
-        lines.append("  python3 .claude/hooks/prime_protocol.py express --reason \"<justification, >=40 chars>\"")
-    lines.append("Inspect state: python3 .claude/hooks/prime_protocol.py status  (docs: .claude/ENFORCEMENT.md)")
-    return "\n".join(lines)
+    return "\n".join([
+        "PRIME AGENT GATE: blocked (%s)." % why,
+        "All coding and development work in this repository is performed by the",
+        "prime-agent subagent (.claude/agents/prime-agent.md), which applies the",
+        "mandated methodology: RAG -> ToT -> CoT -> implement -> self-refine.",
+        "Delegate now: call the Task tool with subagent_type \"prime-agent\" and hand",
+        "it the complete task. Its edits and commands pass this gate automatically,",
+        "and the gate stays open for a grace window afterwards so the main thread",
+        "can commit and push its work.",
+        "Pure research, questions, and read-only commands are never blocked.",
+        "Inspect: python3 .claude/hooks/prime_enforcer.py status  (docs: .claude/ENFORCEMENT.md)",
+    ])
 
 
 def deny(reason):
@@ -154,89 +224,68 @@ def bash_mutates(cmd):
 def handle_pre_tool_use(data):
     tool = data.get("tool_name", "")
     tool_input = data.get("tool_input") or {}
-    state = proto.load_state()
-    open_, why = gate_summary(state)
+    is_open, why = gate_open()
 
     if tool in EDIT_TOOLS:
         path = tool_input.get("file_path") or tool_input.get("notebook_path")
         if not path:
             return
         if in_state_dir(path):
-            proto.log_event("TAMPER", "%s -> %s" % (tool, path))
-            deny("Protocol state is written only via prime_protocol.py; direct writes are refused and logged.")
+            log_event("TAMPER", "%s -> %s" % (tool, path))
+            deny("Gate state is managed only via prime_enforcer.py; direct writes are refused and logged.")
             return
         inside, _real = under_root(path)
-        if not inside:
+        if not inside or is_open:
             return
-        if open_:
-            return
-        proto.log_event("DENY_EDIT", "%s %s (%s)" % (tool, path, why))
+        log_event("DENY_EDIT", "%s %s" % (tool, path))
         deny(deny_reason(why))
         return
 
     if tool == "Bash":
         cmd = tool_input.get("command") or ""
-        if "prime-state" in cmd and "prime_protocol.py" not in cmd:
-            proto.log_event("TAMPER", "bash: %s" % cmd[:200])
-            deny("Direct access to .claude/prime-state is refused and logged; use python3 .claude/hooks/prime_protocol.py status (or rag/tot/cot/refine) instead.")
+        if "prime-state" in cmd and "prime_enforcer.py" not in cmd:
+            log_event("TAMPER", "bash: %s" % cmd[:200])
+            deny("Direct access to .claude/prime-state is refused and logged; use python3 .claude/hooks/prime_enforcer.py status instead.")
             return
-        if "prime_protocol.py" in cmd or open_:
+        if "prime_enforcer.py" in cmd or is_open:
             return
         mutation = bash_mutates(cmd)
         if mutation:
-            proto.log_event("DENY_BASH", "%s :: %s" % (mutation, cmd[:200]))
+            log_event("DENY_BASH", "%s :: %s" % (mutation, cmd[:200]))
             deny(deny_reason("%s; %s" % (mutation, why)))
         return
 
 
-def handle_post_tool_use(data):
-    tool = data.get("tool_name", "")
-    if tool not in EDIT_TOOLS:
-        return
-    tool_input = data.get("tool_input") or {}
-    path = tool_input.get("file_path") or tool_input.get("notebook_path")
-    if not path:
-        return
-    inside, _real = under_root(path)
-    if not inside or in_state_dir(path):
-        return
-    state = proto.load_state()
-    state["edits"]["count"] += 1
-    state["edits"]["last_at"] = time.time()
-    proto.save_state(state)
+def is_prime_payload(data):
+    return "prime-agent" in json.dumps(data)
 
 
-def state_line(state):
-    phases = state.get("phases", {})
-    marks = " ".join(
-        "%s:%s" % (name, "done" if name in phases else "PENDING")
-        for name in ("rag", "tot", "cot", "refine")
-    )
-    complete, missing, expired = proto.protocol_status(state)
-    if expired:
-        status = "EXPIRED (re-run rag)"
-    elif complete:
-        status = "OPEN (edits allowed; refine %s)" % ("satisfied" if proto.refine_ok(state) else "pending")
-    else:
-        status = "LOCKED (run: " + ", ".join(missing) + ")"
-    return "%s | %s | gated edits: %d" % (status, marks, state["edits"]["count"])
+def handle_subagent_start(data):
+    if is_prime_payload(data):
+        open_gate("subagent-start")
+
+
+def handle_subagent_stop(data):
+    if is_prime_payload(data):
+        close_gate("subagent-stop")
+
+
+def state_line():
+    is_open, why = gate_open()
+    return "gate %s: %s" % ("OPEN" if is_open else "CLOSED", why)
 
 
 def handle_user_prompt_submit(_data):
-    if not enforcement_on():
-        return
-    state = proto.load_state()
     context = (
-        "[PRIME AGENT PROTOCOL - ENFORCED BY HOOKS]\n"
-        "Any coding or development work (implementing, fixing, refactoring, config or doc\n"
-        "edits inside this repo) MUST go through the Prime Agent pipeline: RAG (retrieve\n"
-        "and cite real sources) -> ToT (>=3 candidate approaches, pick one) -> CoT\n"
-        "(explicit step plan) -> implement -> self-refine (run checks, record verdict).\n"
-        "File edits and mutating shell commands are DENIED by PreToolUse hooks until\n"
-        "phases are recorded via python3 .claude/hooks/prime_protocol.py, and the Stop\n"
-        "hook blocks ending the turn while edits lack a passing refine. Delegate deep\n"
-        "work to the prime-agent subagent or run /prime for the guided pipeline.\n"
-        "Pure questions/research need no protocol. Current state: " + state_line(state)
+        "[PRIME AGENT MANDATE - ENFORCED BY HOOKS]\n"
+        "Any coding or development work in this repo (editing files, committing,\n"
+        "anything that mutates the working tree) MUST be delegated to the prime-agent\n"
+        "subagent (Task tool, subagent_type \"prime-agent\"). It applies the mandated\n"
+        "methodology: RAG -> ToT -> CoT -> implement -> self-refine (see CLAUDE.md).\n"
+        "PreToolUse hooks deny direct edits and mutating commands in the main thread;\n"
+        "the gate opens automatically while prime-agent runs and for a grace window\n"
+        "afterwards so you can commit and push its work. Research and questions are\n"
+        "unrestricted. Current state: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
@@ -247,26 +296,16 @@ def handle_user_prompt_submit(_data):
 
 
 def handle_session_start(data):
-    if not enforcement_on():
-        return
-    proto.log_event("SESSION_START", data.get("session_id", ""))
-    state = proto.load_state()
+    log_event("SESSION_START", data.get("session_id", ""))
     context = (
-        "[PRIME AGENT PROTOCOL BRIEFING]\n"
-        "This repository enforces the Prime Agent development protocol with deterministic\n"
-        "hooks (see .claude/ENFORCEMENT.md and CLAUDE.md). For ANY coding or development\n"
-        "work you must, in order:\n"
-        "1. RAG: read the relevant code/docs, then record >=3 cited sources and a >=200\n"
-        "   char synthesis: python3 .claude/hooks/prime_protocol.py rag ...\n"
-        "2. ToT: record >=3 distinct approaches, the chosen one, and a rationale:\n"
-        "   python3 .claude/hooks/prime_protocol.py tot ...\n"
-        "3. CoT: record a >=5 step plan plus risks: python3 .claude/hooks/prime_protocol.py cot ...\n"
-        "4. Implement (file edits unlock only after 1-3).\n"
-        "5. Self-refine: run the repo's checks (npm run check, relevant tests), review your\n"
-        "   own diff adversarially, then record: python3 .claude/hooks/prime_protocol.py refine\n"
-        "   --checks \"...\" --verdict pass. The Stop hook blocks the turn ending without it.\n"
-        "The /prime skill walks this pipeline; the prime-agent subagent runs it end to end.\n"
-        "Trivial changes may use the audited express lane. Current state: " + state_line(state)
+        "[PRIME AGENT BRIEFING]\n"
+        "This repository routes all coding and development work through the prime-agent\n"
+        "subagent; hooks deny direct file edits and mutating shell commands in the main\n"
+        "thread (see CLAUDE.md and .claude/ENFORCEMENT.md). Delegate implementation\n"
+        "tasks with the Task tool, subagent_type \"prime-agent\"; the subagent works\n"
+        "under the mandated methodology (RAG -> ToT -> CoT -> implement -> self-refine)\n"
+        "and its edits pass the gate automatically. After it finishes, a grace window\n"
+        "lets the main thread commit and push the result. Current state: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
@@ -276,56 +315,50 @@ def handle_session_start(data):
     })
 
 
-def handle_stop(data):
-    if not enforcement_on():
-        return
-    state = proto.load_state()
-    if state["edits"]["count"] == 0:
-        return
-    if proto.refine_ok(state):
-        if state.get("stop_blocks"):
-            state["stop_blocks"] = 0
-            proto.save_state(state, touch=False)
-        return
-    state["stop_blocks"] = state.get("stop_blocks", 0) + 1
-    proto.save_state(state, touch=False)
-    if state["stop_blocks"] > max_stop_blocks():
-        proto.log_event("VIOLATION", "stop allowed after %d blocks without refine" % (state["stop_blocks"] - 1))
-        respond({"systemMessage": "Prime protocol violation logged: turn ended with edits but no passing refine (see .claude/prime-state/compliance.log)."})
-        return
-    proto.log_event("STOP_BLOCK", "edits=%d stop_blocks=%d" % (state["edits"]["count"], state["stop_blocks"]))
-    respond({
-        "decision": "block",
-        "reason": (
-            "PRIME AGENT PROTOCOL: you modified files this session but the self-refinement "
-            "phase is missing or predates the latest edit. Before stopping: (1) run the "
-            "repo's checks for what you touched (npm run check after code changes; the "
-            "relevant tests per AGENTS.md), (2) re-read your own diff adversarially, fix "
-            "what you find, then (3) record the pass: python3 .claude/hooks/prime_protocol.py "
-            "refine --checks \"<commands run and their results>\" --verdict pass "
-            "(use --verdict revise if issues remain, fix them, and refine again)."
-        ),
-    })
-
-
 HANDLERS = {
     "PreToolUse": handle_pre_tool_use,
-    "PostToolUse": handle_post_tool_use,
+    "SubagentStart": handle_subagent_start,
+    "SubagentStop": handle_subagent_stop,
     "UserPromptSubmit": handle_user_prompt_submit,
     "SessionStart": handle_session_start,
-    "Stop": handle_stop,
 }
 
 
+def cli(argv):
+    cmd = argv[0]
+    if cmd == "status":
+        gate = load_gate()
+        print(state_line())
+        if gate["last_run_at"]:
+            print("last prime-agent run finished: %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(gate["last_run_at"])))
+        print("enforcement: %s (PRIME_ENFORCE), grace: %.0fm, active cap: %.1fh" % (
+            "on" if enforcement_on() else "OFF", grace_seconds() / 60, active_cap_seconds() / 3600))
+        return 0
+    if cmd == "open":
+        open_gate("manual")
+        log_event("MANUAL_OPEN", "opened via CLI")
+        print("Gate opened (logged). Intended for the prime-agent subagent itself on surfaces without SubagentStart hooks.")
+        return 0
+    if cmd == "close":
+        close_gate("manual")
+        print("Gate closed; grace window starts now.")
+        return 0
+    sys.stderr.write("usage: prime_enforcer.py status|open|close\n")
+    return 2
+
+
 def main():
+    if len(sys.argv) > 1:
+        sys.exit(cli(sys.argv[1:]))
     try:
         data = json.load(sys.stdin)
     except ValueError:
         return
-    handler = HANDLERS.get(data.get("hook_event_name", ""))
+    event = data.get("hook_event_name", "")
+    handler = HANDLERS.get(event)
     if not handler:
         return
-    if data.get("hook_event_name") in ("PreToolUse", "PostToolUse") and not enforcement_on():
+    if event == "PreToolUse" and not enforcement_on():
         return
     try:
         handler(data)
