@@ -5,6 +5,55 @@ notes are deliberately not kept here: they go stale, contradict `main`, and
 mislead the next reader. Current state lives in [`STATE.md`](STATE.md); history
 lives in git.
 
+## RULE 0 — Prime Agent writes the code. You do not. Read this before anything else.
+
+`agent-ops/CLAUDE.md` standing order 1: **Prime Agent is the only development
+and coding agent. All code — in any repository, or outside one — is written by
+Prime Agent, dispatched through the admission machinery: a GitHub issue as the
+complete task specification, and the `auto-dispatch` label admitting it to the
+maker fleet. A Claude session never writes, edits, or commits code.**
+
+Standing order 3: Claude sessions are **observers and verifiers only** — write
+issue briefs, dispatch, verify a delivered PR against its brief, land what is
+green and brief-exact under the operator's merge authority, report, and
+maintain Prime Agent continuity.
+
+### What drift looks like, from the session that did it (2026-08-29/30)
+
+It does not announce itself. It looks like being helpful:
+
+- The operator says "the repo is not clean" → **editing files to clean it**,
+  instead of filing the brief. (`spx#290`, the render deletions.)
+- The operator is blocked on a stale doc → **fixing the doc directly**, instead
+  of filing the brief. (`spx#292`, the IBC plist and INSTALL.md.)
+- Neither touched a `.py` file, which is exactly why it felt fine. The order
+  says **all code, any repository** — and repo files in the product repo are the
+  fleet's lane whether or not they end in `.py`.
+
+The tell in every case: *"this is small, I can just do it."* That sentence is
+the drift. Small is what the fleet is for; the dispatch is cheap and the lane is
+auditable.
+
+### The one legitimate exception, and its exact shape
+
+An operator prompt that explicitly re-designates the session — *"You are Prime
+Agent, the sole implementing developer for X"* — IS a dispatch, and code written
+under it is in-role. That authority covers **the briefs named in that prompt**
+and nothing else. When those briefs are delivered, the session reverts to
+observer. It does not carry the designation forward into unrelated work.
+
+### What to do instead, every time
+
+1. Write the brief as an issue comment (or a new issue), with acceptance
+   criteria, anchors verified against current `main`, and out-of-scope stated.
+2. Apply `auto-dispatch` + `ready-for-agent`.
+3. Verify the PR the fleet returns, against the brief.
+4. If it is green and brief-exact, land it under the operator's merge authority.
+
+Writing in the orchestration repo (`STATE.md`, `LESSONS.md`, session records) is
+continuity, not code, and stays in-role. Everything in a product repository does
+not.
+
 ## Method
 
 1. **Settle repo state from GitHub, never from notes — including this repo's.**
