@@ -175,7 +175,7 @@ refusal is unexplained.
   superpowers, and the rest — into the S0 plan so later slices route through them
   deliberately). Fix **#230** (one accessor; display = submission truth; keep the
   shipped-default-off pin untouched). Safety action for the operator, documented in the PR:
-  set the Mac config's `execution.mode: off` explicitly until S4. Exit: operator starts SPX
+  set the Mac config's `execution.mode: "off"` explicitly until S4 — **quoted**: bare `off` is YAML `False` and the loader refuses it by design (measured 2026-08-30). Exit: operator starts SPX
   in `PAPER/OFF`; `/readiness` shows real build identity, honest mode, and the two session
   domains failing closed with `session_store_unavailable` (expected until S1).
 - **S1 — Hermes→SPX session delivery** (#195, #196, #171; respect #153 provider-owned
