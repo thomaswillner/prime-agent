@@ -1,5 +1,14 @@
 # Challenge of the "Codex GPT 5.6 SOL MAX ANALYSIS" — SPX 0DTE V2
 
+> **Historical record, deliberately frozen.** This is a challenge of one dated
+> analysis, verified against the repository as it stood on 2026-08-28. It is
+> kept because [`PRIME_AGENT_INPUT_SPX_V2.md`](PRIME_AGENT_INPUT_SPX_V2.md)
+> rests on its §B corrections, and because §C (V1 coverage) and §D (the method
+> instructions) are still the answer when those questions are asked again.
+> **Its repo-state claims are not current and are not maintained** — for that
+> read [`STATE.md`](STATE.md), and above it, GitHub.
+
+
 Date: 2026-08-28.
 Verified against: `thomaswillner/spx-0dte-bot-v2` @ `cc7f8b1` (main, 2026-08-24),
 `thomaswillner/spx-0dte-bot` (V1) @ `58a2aad`, plus the live GitHub issue tracker (90 open issues).
