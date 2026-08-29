@@ -4,9 +4,11 @@ One rule, enforced by Claude Code hooks: **all development work in this repo is 
 by the Prime Agent runtime** - the agent framework this repository ships
 (`prime-agent`, Prime Intellect's self-improving RLM coding agent) - never by Claude
 Code's main thread. The gate only guarantees the runtime is actually engaged; it
-polices nothing else. What the runtime is asked to do, and how its work is observed
-and verified, belong to the existing orchestration layer in `orchestration/`
-(inputs of record, audit challenges, session learnings - see CLAUDE.md).
+polices nothing else. What the runtime is asked to do, and how its work is
+admitted, observed, and verified, belong to the existing orchestration system:
+the `thomaswillner/agent-ops` repo (admission, worktree isolation, evidence,
+landing gates via `maker-run.sh`) plus this repo's `orchestration/<workstream>/`
+verification artifacts - see CLAUDE.md.
 
 ## Why a hook at all
 

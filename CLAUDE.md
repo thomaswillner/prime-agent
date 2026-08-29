@@ -26,20 +26,28 @@ so instead of implementing directly.
 (e.g. in `.claude/settings.local.json` env) disables it locally. Details:
 `.claude/ENFORCEMENT.md`.
 
-## Orchestration layer (already exists - do not duplicate it)
+## Orchestration (already exists - do not duplicate it)
 
-This repository is also the **orchestrating repo**: `orchestration/<workstream>/`
-(e.g. `orchestration/spx-v2/`) observes, orchestrates, and verifies all Prime Agent
-work. Per workstream it holds the **implementation input of record**
-(`PRIME_AGENT_INPUT_*.md` - the evidence-anchored task handed to the runtime), the
-**audit challenge** (`AUDIT_CHALLENGE_*.md` - verification of claims against the
-target repos), and **session learnings** (`SESSION_LEARNINGS_*.md` - read the
-workstream's learnings first; the SessionStart hook injects the latest learnings
-into every session automatically, so recorded mistakes are never out of context).
-Dispatched tasks
-must trace to the relevant input of record, and verification outcomes are recorded
-back there. The gate below only enforces *who* implements (the runtime);
-*what* to do and *whether it is verified* belong to the orchestration layer.
+The **prime orchestration repo is `thomaswillner/agent-ops`** ("Prime-owned maker
+operations"): it owns admission (GitHub issues are the complete task spec; briefs
+are thin pointers), worktree isolation, bounded execution, runtime identity
+evidence, landing checks, and release gates for `prime-agent` - see its
+`doctrine/agent-operating-model.md`, `policy/pipeline-policy.json`, and
+`scripts/maker-run.sh` (gates -> lock -> contract -> adapter loop -> LANDING GATE),
+with `focus.yaml` pointing the maker fleet at the current target repo. On the Mac
+estate, dispatch Prime Agent work through that pipeline; the `run --task` wrapper
+here is the in-repo path for surfaces without agent-ops. Prime exclusively owns
+provider, model, cooldown, fallback, and thinking-level selection - never pass
+those flags.
+
+Workstream verification artifacts also live in this repo under
+`orchestration/<workstream>/`: the implementation input of record
+(`PRIME_AGENT_INPUT_*.md`), the audit challenge (`AUDIT_CHALLENGE_*.md`), and
+session learnings (`SESSION_LEARNINGS_*.md` - the SessionStart hook injects the
+latest learnings into every session automatically). Dispatched tasks trace to the
+input of record; verification lands back there. The gate below only enforces *who*
+implements (the runtime); *what* and *verification* belong to agent-ops and these
+artifacts.
 
 ## Machine-wide mandate (global CLAUDE.md)
 
