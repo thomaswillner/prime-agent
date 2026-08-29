@@ -26,6 +26,19 @@ so instead of implementing directly.
 (e.g. in `.claude/settings.local.json` env) disables it locally. Details:
 `.claude/ENFORCEMENT.md`.
 
+## Orchestration layer (already exists - do not duplicate it)
+
+This repository is also the **orchestrating repo**: `orchestration/<workstream>/`
+(e.g. `orchestration/spx-v2/`) observes, orchestrates, and verifies all Prime Agent
+work. Per workstream it holds the **implementation input of record**
+(`PRIME_AGENT_INPUT_*.md` - the evidence-anchored task handed to the runtime), the
+**audit challenge** (`AUDIT_CHALLENGE_*.md` - verification of claims against the
+target repos), and **session learnings** (`SESSION_LEARNINGS_*.md` - read the
+workstream's learnings first; do not repeat recorded mistakes). Dispatched tasks
+must trace to the relevant input of record, and verification outcomes are recorded
+back there. The gate below only enforces *who* implements (the runtime);
+*what* to do and *whether it is verified* belong to the orchestration layer.
+
 ## Machine-wide mandate (global CLAUDE.md)
 
 To apply the mandate on a machine for every project, add this block to
