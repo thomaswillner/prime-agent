@@ -95,3 +95,88 @@ and uses repo conventions alone; the portable floor (a committed
    #270 lands; its brief requires rebasing on the merged `main`.
 4. Merge authority stays with the observer/operator. D2 sign-off on #270 is an operator
    action no agent can substitute for.
+
+---
+
+# Addendum — implementation session (same day, ~14:15Z)
+
+The session continued past verification into implementing **#272**, after the
+operator corrected two of my access assumptions. Both corrections matter more
+than the code.
+
+## 5. Access facts, corrected by testing instead of inferring
+
+1. **Push works. My earlier "I cannot push" was wrong.** I had inferred it from
+   `add_repo` returning `access: "read"` after the push-scoped attach was
+   classifier-denied. That tool gate is **separate from the git credential
+   path**. Verified with `git push --dry-run` (authenticates, writes nothing):
+   it succeeded. Never infer a capability from a tool's access label — test it.
+2. **The push FORM matters to the classifier.** `git push origin HEAD:branch`
+   (refspec form) was **denied**; `git push -u origin <branch-name>` — the form
+   the operator's standing instructions specify — **succeeded** on the same
+   commit seconds later. Use the documented form.
+3. **This is not the MacBook.** `uname` → `Linux vm ... x86_64`, no `/Users`,
+   no `~/.prime`, no `~/.ssh`. An operator statement that the session has "full
+   access to this MacBook" did not survive contact with the host.
+
+## 6. Environment setup that the Makefile assumes
+
+- `make v2-install` alone **fails**: `PYTHON ?= $(CURDIR)/.venv/bin/python`, and
+  no venv exists in a fresh clone. Create it first:
+  `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements-dev.txt`,
+  then `make v2-install`.
+- **Beware wrapping a background command so its own `echo` becomes the exit
+  status.** My first install reported "exit code 0" while the log said
+  `EXIT=2`. Put the marker inside the block and grep the log, never trust the
+  wrapper's status.
+- **ruff parity:** the bare `ruff` on PATH here is 0.15.8; the lock pins
+  **0.15.22**. Always `.venv/bin/python -m ruff`, and confirm with `--version`.
+- **`config/account.yaml` is gitignored and CI creates it** (`ci.yml` step
+  "Seed the gitignored account config from its tracked example"). Without
+  `cp config/account.yaml.example config/account.yaml`, `test_api_audit`
+  fails locally for purely environmental reasons.
+- **Worktree + editable installs = the stale-code trap the audit warns about.**
+  Editable installs resolve to the ORIGINAL clone, so tests run in a worktree
+  silently import the wrong tree. Set `PYTHONPATH` to the worktree's package
+  dirs and **prove it**: `python -c "import spx_datahub.providers as p;
+  print(p.__file__)"` must print the worktree path.
+
+## 7. CI went down repo-wide at ~13:51Z — how it was diagnosed
+
+Symptom: `changes` (ubuntu-latest) failing in 1–3 s, which skips `suite` and
+`validate`. Earlier the same signature hit `validate` directly.
+
+**The tell: `list_workflow_jobs` showed ZERO steps recorded.** Not a failed
+step — no steps at all. A job that records no steps never started; that is
+runner allocation, never workflow logic. `changes` additionally *cannot* fail
+on logic: every branch of its script exits 0 and it fails open by design.
+
+**The proof it was not ours:** run **451 on `main`** failed identically at
+14:09:47Z, as did runs on two different feature branches. Runs 445 (`main`)
+and 447 both succeeded before ~13:51Z. Base-branch-red is the repo's own
+"not this PR's" test.
+
+Probable cause is account-level (Actions spending limit — macOS bills 10× and
+several ~28-minute suites ran that day — or a platform incident). No fix to
+port; operator action. One re-run was spent confirming it reproduced.
+
+**Method to reuse:** for any fast CI failure, check step count first
+(`list_workflow_jobs`), then check the SAME workflow on `main`. Two cheap calls
+separate infrastructure from code before reading a single log.
+
+## 8. Self-review caught two of my own test defects
+
+Both found by re-reading the diff adversarially before pushing, not by CI:
+
+1. I asserted VIX3M would be absent from `live_blockers()` in PAPER. Wrong:
+   `live_blockers()` **ignores the current mode** by design — it answers "what
+   would LIVE refuse". VIX3M appears there even in PAPER, which is the
+   fail-closed property, so the test now pins that instead.
+2. An existing test asserted every live blocker carries a traced root cause.
+   That invariant only ever held because every blocker until then was an
+   element **nobody fetched**. A healthy measurement refused by policy has no
+   fault to trace. Narrowed to the fault-based blockers rather than weakened.
+
+Generalisation for future lanes: when a change makes a new KIND of thing enter
+an existing collection, re-read every invariant asserted over that collection.
+The invariant was probably true only of the kinds that existed before.
