@@ -34,7 +34,9 @@ work. Per workstream it holds the **implementation input of record**
 (`PRIME_AGENT_INPUT_*.md` - the evidence-anchored task handed to the runtime), the
 **audit challenge** (`AUDIT_CHALLENGE_*.md` - verification of claims against the
 target repos), and **session learnings** (`SESSION_LEARNINGS_*.md` - read the
-workstream's learnings first; do not repeat recorded mistakes). Dispatched tasks
+workstream's learnings first; the SessionStart hook injects the latest learnings
+into every session automatically, so recorded mistakes are never out of context).
+Dispatched tasks
 must trace to the relevant input of record, and verification outcomes are recorded
 back there. The gate below only enforces *who* implements (the runtime);
 *what* to do and *whether it is verified* belong to the orchestration layer.

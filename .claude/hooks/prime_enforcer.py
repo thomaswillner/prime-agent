@@ -323,6 +323,36 @@ def cli_run(args):
     return code
 
 
+SHARED_MEMORY_BUDGET = 6000
+
+
+def shared_memory_snippets():
+    """Latest SESSION_LEARNINGS per orchestration workstream, budget-capped."""
+    base = os.path.join(repo_root(), "orchestration")
+    parts = []
+    budget = SHARED_MEMORY_BUDGET
+    if not os.path.isdir(base):
+        return parts
+    for ws in sorted(os.listdir(base)):
+        d = os.path.join(base, ws)
+        if not os.path.isdir(d):
+            continue
+        names = sorted(n for n in os.listdir(d) if n.startswith("SESSION_LEARNINGS"))
+        if not names:
+            continue
+        try:
+            with open(os.path.join(d, names[-1]), "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        snippet = text[:budget]
+        parts.append("--- shared memory orchestration/%s/%s ---\n%s" % (ws, names[-1], snippet))
+        budget -= len(snippet)
+        if budget <= 0:
+            break
+    return parts
+
+
 def state_line():
     is_open, why = gate_open()
     return "gate %s: %s" % ("OPEN" if is_open else "CLOSED", why)
@@ -355,6 +385,12 @@ def handle_session_start(data):
         "\"<task>\"; after a successful run a grace window lets the main thread\n"
         "commit and push the result. State: " + state_line()
     )
+    memory = shared_memory_snippets()
+    if memory:
+        context += (
+            "\n\nRead-first shared memory (orchestration layer) - do not repeat "
+            "recorded mistakes:\n\n" + "\n\n".join(memory)
+        )
     respond({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
