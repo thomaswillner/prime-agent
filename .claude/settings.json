@@ -49,28 +49,6 @@
 					}
 				]
 			}
-		],
-		"SubagentStart": [
-			{
-				"hooks": [
-					{
-						"type": "command",
-						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
-						"timeout": 15
-					}
-				]
-			}
-		],
-		"SubagentStop": [
-			{
-				"hooks": [
-					{
-						"type": "command",
-						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
-						"timeout": 15
-					}
-				]
-			}
 		]
 	}
 }

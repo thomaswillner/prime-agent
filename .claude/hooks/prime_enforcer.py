@@ -1,29 +1,40 @@
 #!/usr/bin/env python3
 """Prime Agent delegation gate.
 
-One rule, enforced deterministically by Claude Code hooks: coding and
-development work in this repo is done by the prime-agent subagent, not the
-main thread. File edits and mutating shell commands are denied unless a
-prime-agent run is active or recently finished. Nothing else is policed.
+One rule, enforced deterministically by Claude Code hooks: all development
+work in this repo is done by the Prime Agent runtime - this repository's
+own agent framework (prime-agent, Prime Intellect's self-improving RLM
+coding agent) - never by Claude Code's main thread. File edits and mutating
+shell commands are denied unless a prime-agent run is active or recently
+finished. Nothing else is policed.
 
 Hook mode (no argv; hook JSON on stdin, routed on hook_event_name):
-  SubagentStart / SubagentStop  -> open/close the gate for prime-agent runs
-  PreToolUse                    -> deny edits and mutating Bash while closed
+  PreToolUse                      -> deny edits and mutating Bash while closed
   SessionStart / UserPromptSubmit -> inject the mandate and gate state
 
 CLI mode:
+  python3 .claude/hooks/prime_enforcer.py run --task "..." [-- extra args]
+      Drive the prime-agent runtime headlessly (prime-agent -p <task>).
+      The gate is open during the run; a successful exit starts the grace
+      window so the result can be committed and pushed.
   python3 .claude/hooks/prime_enforcer.py status|open|close
+      Inspect the gate; open/close are the logged manual fallback.
+
+Runtime resolution for run: $PRIME_AGENT_BIN, else prime-agent on PATH,
+else ./prime-agent.sh at the repo root.
 
 Env: PRIME_ENFORCE=0 disables the gate. PRIME_GRACE_MINUTES (default 30)
-keeps the gate open after a prime-agent run so the main thread can commit
+keeps the gate open after a successful run so the main thread can commit
 and push its work. PRIME_ACTIVE_CAP_HOURS (default 4) bounds a run that
-never reports stopping. Every open, close, and denial is logged to
+never reports finishing. Every run, open, close, and denial is logged to
 .claude/prime-state/compliance.log.
 """
 
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 
@@ -156,11 +167,12 @@ def in_state_dir(path):
 def deny_reason(why):
     return "\n".join([
         "PRIME AGENT GATE: blocked (%s)." % why,
-        "Coding and development work in this repository is done by the prime-agent",
-        "subagent, not the main thread. Delegate now: call the Task tool with",
-        "subagent_type \"prime-agent\" and hand it the complete task. Its edits and",
-        "commands pass this gate automatically, and the gate stays open for a grace",
-        "window afterwards so the main thread can commit and push its work.",
+        "All development work in this repository is done by the Prime Agent runtime",
+        "(this repo's agent framework), never by Claude Code directly. Dispatch the",
+        "complete task to it now:",
+        "  python3 .claude/hooks/prime_enforcer.py run --task \"<the full task>\"",
+        "That drives prime-agent -p headlessly; a successful run keeps this gate open",
+        "for a grace window so you can commit and push what the runtime produced.",
         "Research, questions, and read-only commands are never blocked.",
         "Inspect: python3 .claude/hooks/prime_enforcer.py status  (docs: .claude/ENFORCEMENT.md)",
     ])
@@ -252,18 +264,63 @@ def handle_pre_tool_use(data):
         return
 
 
-def is_prime_payload(data):
-    return "prime-agent" in json.dumps(data)
+def resolve_runtime():
+    env_bin = os.environ.get("PRIME_AGENT_BIN")
+    if env_bin:
+        return env_bin if os.path.exists(env_bin) else None
+    on_path = shutil.which("prime-agent")
+    if on_path:
+        return on_path
+    local = os.path.join(repo_root(), "prime-agent.sh")
+    return local if os.path.exists(local) else None
 
 
-def handle_subagent_start(data):
-    if is_prime_payload(data):
-        open_gate("subagent-start")
-
-
-def handle_subagent_stop(data):
-    if is_prime_payload(data):
-        close_gate("subagent-stop")
+def cli_run(args):
+    task = None
+    extra = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--task":
+            i += 1
+            if i >= len(args):
+                sys.stderr.write("run: --task requires a value\n")
+                return 2
+            task = args[i]
+        elif arg == "--":
+            extra = args[i + 1:]
+            break
+        else:
+            extra.append(arg)
+        i += 1
+    if not task:
+        sys.stderr.write("usage: prime_enforcer.py run --task \"<task>\" [-- extra prime-agent args]\n")
+        return 2
+    binary = resolve_runtime()
+    if not binary:
+        log_event("RUN_UNAVAILABLE", task[:200])
+        sys.stderr.write(
+            "prime-agent runtime not found: set PRIME_AGENT_BIN, install prime-agent on\n"
+            "PATH, or run from a checkout containing prime-agent.sh. The gate stays closed.\n")
+        return 3
+    open_gate("runtime-run")
+    log_event("RUN_START", "%s :: %s" % (binary, task[:300]))
+    try:
+        code = subprocess.run([binary, "-p", task] + extra, cwd=repo_root()).returncode
+    except OSError as exc:
+        code = 4
+        sys.stderr.write("failed to execute %s: %r\n" % (binary, exc))
+    if code == 0:
+        close_gate("runtime-run")
+        log_event("RUN_OK", task[:200])
+        print("prime-agent run finished. Grace window open for commit/push.")
+    else:
+        gate = load_gate()
+        gate["active_until"] = 0.0
+        save_gate(gate)
+        log_event("RUN_FAILED", "exit=%d :: %s" % (code, task[:200]))
+        sys.stderr.write("prime-agent exited %d; no grace credit granted.\n" % code)
+    return code
 
 
 def state_line():
@@ -273,10 +330,11 @@ def state_line():
 
 def handle_user_prompt_submit(_data):
     context = (
-        "[PRIME MANDATE] Coding/development work in this repo must be delegated to\n"
-        "the prime-agent subagent (Task tool, subagent_type \"prime-agent\"); hooks\n"
-        "deny direct edits and mutating commands in the main thread. Research is\n"
-        "unrestricted. State: " + state_line()
+        "[PRIME MANDATE] All development work in this repo is done by the Prime Agent\n"
+        "runtime (this repository's agent framework). Dispatch tasks via\n"
+        "python3 .claude/hooks/prime_enforcer.py run --task \"<task>\" - hooks deny\n"
+        "direct edits and mutating commands otherwise. Research is unrestricted.\n"
+        "State: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
@@ -289,12 +347,13 @@ def handle_user_prompt_submit(_data):
 def handle_session_start(data):
     log_event("SESSION_START", data.get("session_id", ""))
     context = (
-        "[PRIME BRIEFING] This repository routes all coding and development work\n"
-        "through the prime-agent subagent; hooks deny direct file edits and mutating\n"
+        "[PRIME BRIEFING] All development work in this repository is done by the\n"
+        "Prime Agent runtime - the agent framework this repo ships (prime-agent).\n"
+        "Claude Code never implements directly: hooks deny file edits and mutating\n"
         "shell commands in the main thread (see CLAUDE.md, .claude/ENFORCEMENT.md).\n"
-        "Delegate with the Task tool, subagent_type \"prime-agent\"; its edits pass\n"
-        "the gate, and a grace window after each run lets the main thread commit and\n"
-        "push the result. State: " + state_line()
+        "Dispatch tasks with python3 .claude/hooks/prime_enforcer.py run --task\n"
+        "\"<task>\"; after a successful run a grace window lets the main thread\n"
+        "commit and push the result. State: " + state_line()
     )
     respond({
         "hookSpecificOutput": {
@@ -306,8 +365,6 @@ def handle_session_start(data):
 
 HANDLERS = {
     "PreToolUse": handle_pre_tool_use,
-    "SubagentStart": handle_subagent_start,
-    "SubagentStop": handle_subagent_stop,
     "UserPromptSubmit": handle_user_prompt_submit,
     "SessionStart": handle_session_start,
 }
@@ -315,6 +372,8 @@ HANDLERS = {
 
 def cli(argv):
     cmd = argv[0]
+    if cmd == "run":
+        return cli_run(argv[1:])
     if cmd == "status":
         gate = load_gate()
         print(state_line())
@@ -326,13 +385,13 @@ def cli(argv):
     if cmd == "open":
         open_gate("manual")
         log_event("MANUAL_OPEN", "opened via CLI")
-        print("Gate opened (logged). Intended for the prime-agent subagent itself on surfaces without SubagentStart hooks.")
+        print("Gate opened (logged manual fallback).")
         return 0
     if cmd == "close":
         close_gate("manual")
         print("Gate closed; grace window starts now.")
         return 0
-    sys.stderr.write("usage: prime_enforcer.py status|open|close\n")
+    sys.stderr.write("usage: prime_enforcer.py run --task \"...\" | status|open|close\n")
     return 2
 
 

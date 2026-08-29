@@ -1,18 +1,44 @@
 # Prime Agent mandate (enforced)
 
-All coding and development work in this repository is done by the **prime-agent
-subagent** (`.claude/agents/prime-agent.md`). Do not implement directly in the main
-thread: delegate the complete task with the Task tool, `subagent_type: "prime-agent"`.
+**All development work in this repository is done by the Prime Agent runtime** - the
+agent framework this repository ships (`prime-agent`, Prime Intellect's self-improving
+RLM coding agent). Claude Code never implements directly. To do coding work, dispatch
+the complete task to the runtime:
+
+```bash
+python3 .claude/hooks/prime_enforcer.py run --task "<the full task>"
+```
+
+That drives `prime-agent -p` headlessly (extra CLI args pass through after `--`, e.g.
+`-- --autonomous --autonomous-gate "npm run check"`). While the runtime works, and for
+a grace window after a successful run, the gate is open so the main thread can commit
+and push the result.
 
 This is enforced, not advisory: `PreToolUse` hooks in `.claude/settings.json` deny
 file edits and mutating shell commands in the main thread while no prime-agent run is
-active or recent. The gate opens automatically during a run and for a grace window
-afterwards so the main thread can commit and push the result. Research, questions,
-and read-only commands are never blocked.
+active or recent. Research, questions, and read-only commands are never blocked.
+
+Runtime resolution: `$PRIME_AGENT_BIN`, else `prime-agent` on PATH, else
+`./prime-agent.sh` in this checkout. If none is available the gate stays closed - say
+so instead of implementing directly.
 
 `python3 .claude/hooks/prime_enforcer.py status` shows the gate; `PRIME_ENFORCE=0`
 (e.g. in `.claude/settings.local.json` env) disables it locally. Details:
 `.claude/ENFORCEMENT.md`.
+
+## Machine-wide mandate (global CLAUDE.md)
+
+To apply the mandate on a machine for every project, add this block to
+`~/.claude/CLAUDE.md`:
+
+```markdown
+# Prime Agent mandate
+All development work is done by the Prime Agent runtime (`prime-agent`), never by
+Claude Code directly. For any coding task, dispatch it to prime-agent (headless:
+`prime-agent -p "<task>"`; in the prime-agent repo use
+`python3 .claude/hooks/prime_enforcer.py run --task "<task>"` so the enforcement
+gate opens for commit/push). Only commit, push, and report what the runtime produced.
+```
 
 # Repository conventions
 
