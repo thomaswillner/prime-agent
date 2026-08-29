@@ -1,5 +1,14 @@
 # SPX V2 — Implementation Input of Record (corrected, evidence-anchored)
 
+> **Status banner (2026-08-29, `main` `8d2139c`).** This document is the
+> **input of record** and still governs: the mission, the guardrails (§8), the
+> forbidden list (§9) and the open decisions (§10) are all live. But its §2
+> "ground truth" describes the repository **as measured on 2026-08-28**, and
+> several defects it names are now fixed. **Slices S0, S1, S2 and S3 of §5 are
+> merged**; S4 (#236) is next and needs decision D3. For what is true today read
+> [`STATE.md`](STATE.md) — and above either of them, read GitHub.
+
+
 Date: 2026-08-28. Status: **supersedes** the pasted "Codex GPT 5.6 SOL MAX ANALYSIS" as the
 input handed to the implementing agent. Corrections applied per
 [`AUDIT_CHALLENGE_2026-08-28.md`](AUDIT_CHALLENGE_2026-08-28.md).
