@@ -246,3 +246,77 @@ and got *stronger* — the right basis is "reproduces on untouched `main`", not
 **Rule:** never publish a test claim you have not run in the form you state it.
 "Passes in isolation" and "reproduces on main" are different claims with
 different evidence; only one of them was true.
+
+---
+
+# Correction to §9 and §4 — the queue emptied while this session was idle (21:54Z)
+
+§9 and §4 above say **#271 is the only open brief, unstarted, no lane**. That
+was true at 16:12Z and is **false now**. Recorded here rather than edited away,
+because being stale is the failure mode this whole file exists to prevent — and
+it caught the author of the file, five hours after writing the warning.
+
+## 13. What landed between 16:12Z and 21:54Z
+
+`main` is **`8d2139c`**. Merged in that window, none of it by this session:
+
+| Commit | Brief → PR | What |
+|---|---|---|
+| `2194c2b` | #279 | **The #58 alert-bridge race is FIXED** — "wait for the outcome, not for six ticks" |
+| `74bca70` | #276 → #278 | This week's binding invariants carried into `AGENTS.md` |
+| `cfa3252` | **#271 → #284** | **R1/R3 broker hardening — the last brief, delivered.** Also closed #165 |
+| `8d2139c` | #274 → #283 | Repo cleanup: orphan runtime and design artifacts removed |
+
+**Stop excepting the #58 flake.** Every PR in this session's train carried
+"known-flaky #58 excepted" as standing boilerplate. #279 fixed the race. A
+future session repeating that exception is quoting a resolved defect — check
+before you except.
+
+## 14. §3's routing conclusion was confirmed by events
+
+§3 argued that #271 and #272 belong to the **Mac maker fleet**, because
+`auto-dispatch` is what admits them and the mats/superpowers/routing runtime
+lives there. #271 was then delivered by exactly that path, on branch
+`fix/271-r1-r3-broker-hardening`, with macOS CI green as the environment of
+record. The conclusion was right, and the remote session correctly did not open
+a second lane.
+
+## 15. Issue-state drift — three delivered issues are still OPEN
+
+**#271, #276 and #274 are all delivered and merged, and all still open.** Their
+PRs name them in the title (`… (#271)`) but a title reference is not a closing
+keyword, so GitHub closed none of them. #284 *did* close #165, because its body
+says the keyword.
+
+This is the mirror image of the hazard the V2 `CLAUDE.md` documents: there, a
+keyword written as an example closed a live P1; here, delivered work stays open.
+Both produce the same class of damage — **`make open-work` and the issue tracker
+disagree with `main`** — and the tracker is the weakest authority in the repo
+(`AGENTS.md` §6), so the drift is silent until someone re-picks finished work.
+
+*Operator action, not an agent action:* close #271, #276 and #274 as completed,
+or the next `make open-work` offers three finished briefs as ready.
+
+## 16. One deliberate residual from #284, tracked as #286
+
+`_assert_live_quotes()` still accepts a ticker whose `marketDataType` is `None`,
+and ib_async initialises that attribute to `1`. The maker deferred it on stated
+grounds: the fix gates the chain-selection scan across dozens of strikes and
+depends on callback-versus-snapshot ordering that cannot be exercised without a
+live broker session, so a blind fix could leave LIVE unenterable with no test
+able to reveal it. The entry-leg check closes the path where an order is
+actually submitted. **This belongs with D7 live qualification — it is a known
+open edge on the LIVE path, not a closed one.**
+
+## 17. Where the convergence plan now stands
+
+S0, S1, S2 and S3 are merged. The next slice in `PRIME_AGENT_INPUT_SPX_V2.md`
+§5 is **S4 — #236**: the sanctioned PAPER order tooling
+(`scripts/ibkr_order_poc.py`, place/verify/cancel through the production
+adapter, order owner and journal — no private broker shortcut), then one
+bounded PAPER order under explicit operator run authorization (decision D3).
+
+That is the first slice whose exit criteria require a **real broker order**.
+Everything up to here is code-wired; S4 is where "runtime-proven" starts, and
+the operator runs it. Broker certification remains `0/12` and this system has
+still never placed a trade.
