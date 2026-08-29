@@ -28,8 +28,13 @@ first slice whose exit criteria require a real broker order.
 
 1. **Start the runtime on the Mac.** No cloud session can: the only Claude Code
    environment is `anthropic_cloud` (Linux), with no route to the Mac and no
-   IB Gateway. Before first start, delete `data_source.vix.allow_cboe_vix3m_fallback`
-   from the Mac's `config/data.yaml` or the process refuses to start.
+   IB Gateway. **First attempt made 2026-08-30 — PR #291, evidence only.** It
+   did not pass: with IB Gateway down the PAPER runtime fail-closes at adapter
+   start (`paper_adapter_session_check_failed`) and never binds, so `/readiness`
+   was never presented. Two measured FAILs (session artifacts absent →
+   `artifact_missing` both domains; no listener on 7497), three observables
+   unprovable without a live process. Bringing the Gateway up is operator-only
+   (IB Key 2FA).
    Then in `PAPER/OFF`, `/readiness` should show real build identity and honest
    mode, both session domains healthy with real cookie age and verification
    time, `open_interest` as `cboe_intraday_authority_removed`, and `vix3m`
@@ -42,6 +47,25 @@ first slice whose exit criteria require a real broker order.
    to the operator, which is why #274 is still open.
 
 Open decisions D1–D8 are listed in the input document §10.
+
+## Corrected claims — measured, after being asserted wrongly
+
+- **A leftover `data_source.vix.allow_cboe_vix3m_fallback` does NOT refuse
+  startup.** This file said it did. Measured on the Mac (PR #291): `extra="forbid"`
+  fires inside *provider composition* and is converted to
+  `startup: GONE data (paper_data_composition_refused)` with "entries are
+  IMPOSSIBLE" — with a live Gateway the process **runs and binds** in that
+  state. Startup refusals for raw YAML come from `settings_adapter.py`'s named
+  `STRATEGY_OWNED_PATHS`, which this key is not on.
+  *Provenance of the error:* PR #270's body and the `production_data.py:89`
+  comment both assert the refusal; it was copied from them into this file, the
+  Mac dispatch prompt and several summaries **without ever being run**. The
+  code comment is still wrong and is worth a fix lane.
+  *The rule this broke is already in `LESSONS.md` §13* — never publish a claim
+  you have not run in the form you state it. Deleting the key is still correct
+  housekeeping; it is simply not a startup blocker.
+- **`execution.mode` must be quoted.** Bare `off` is YAML `False` and the loader
+  refuses it by design. Set `execution.mode: "off"`.
 
 ## Standing facts that keep getting re-derived
 
