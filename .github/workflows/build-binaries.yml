@@ -23,6 +23,11 @@ permissions:
 
 jobs:
   release-context:
+    # Without R2_PUBLIC_BASE_URL (and the R2 secrets) this pipeline cannot
+    # succeed, so on repos without release infrastructure (forks) push-triggered
+    # runs skip instead of failing. Explicit workflow_dispatch still runs and
+    # fails loudly on the existing `test -n` guards.
+    if: ${{ vars.R2_PUBLIC_BASE_URL != '' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
