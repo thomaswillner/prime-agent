@@ -94,10 +94,15 @@ Open decisions D1–D8 are listed in the input document §10.
 
 ## Where these documents live on the MacBook
 
-**Two sessions measured that these files did not exist on the Mac** before
-2026-08-30 — they searched Spotlight, home to depth 7, `~/.prime` and the prime
-package, and found nothing. Every dispatch prompt pointed at them anyway, so
-Mac sessions re-derived from scratch what was already written down here.
+**Two sessions searched for these files on the Mac before 2026-08-30 and did
+not find them** within the scope they searched: Spotlight, `$HOME` to depth 7,
+`~/.prime`, and the prime package. That is not the same as "they did not
+exist" — a copy outside that scope, on an unindexed path or another volume,
+would falsify the stronger claim, and `LESSONS.md` §4 requires absence to be
+stated with its searched scope. What is established is that the sessions
+looking for them could not find them, which is the operative fact: every
+dispatch prompt pointed at these files anyway, so Mac sessions re-derived from
+scratch what was already written down here.
 
 Cloned 2026-08-30. Canonical paths, for prompts and for readers:
 
