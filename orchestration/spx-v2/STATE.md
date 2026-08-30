@@ -35,6 +35,14 @@ first slice whose exit criteria require a real broker order.
    `artifact_missing` both domains; no listener on 7497), three observables
    unprovable without a live process.
 
+   **UPDATE 2026-08-30 ~00:37Z — the process has now started and served
+   `/readiness`.** IB Gateway is up under `launchd` (`java` PID observed
+   `TCP *:7497 LISTEN`, API connected, usfarm + ushmds green), and the shipped
+   process bound `127.0.0.1:8770`, connected to the broker and answered. That is
+   the first time. Evidence and five findings: issue #281 comment
+   [5465906972](https://github.com/thomaswillner/spx-0dte-bot-v2/issues/281#issuecomment-5465906972).
+   Certification remains 0/12; it has still never placed a trade.
+
    **Three preconditions, all required — the Gateway alone is not enough:**
    1. **IB Gateway running on 7497.** Installed as of 2026-08-30 (operator);
       supervision is [thomaswillner/spx-0dte-bot-v2#292](https://github.com/thomaswillner/spx-0dte-bot-v2/pull/292) plus issue
@@ -83,6 +91,32 @@ Open decisions D1–D8 are listed in the input document §10.
   IMPOSSIBLE, so `/readiness` cannot come up healthy while it is there.
 - **`execution.mode` must be quoted.** Bare `off` is YAML `False` and the loader
   refuses it by design. Set `execution.mode: "off"`.
+
+## Where these documents live on the MacBook
+
+**Two sessions searched for these files on the Mac before 2026-08-30 and did
+not find them** within the scope they searched: Spotlight, `$HOME` to depth 7,
+`~/.prime`, and the prime package. That is not the same as "they did not
+exist" — a copy outside that scope, on an unindexed path or another volume,
+would falsify the stronger claim, and `LESSONS.md` §4 requires absence to be
+stated with its searched scope. What is established is that the sessions
+looking for them could not find them, which is the operative fact: every
+dispatch prompt pointed at these files anyway, so Mac sessions re-derived from
+scratch what was already written down here.
+
+Cloned 2026-08-30. Canonical paths, for prompts and for readers:
+
+| What | Path |
+|---|---|
+| Orchestration (this file, `LESSONS.md`, the input of record) | `~/Projects/infrastructure/prime-agent/orchestration/spx-v2/` |
+| Operator standing orders + dispatch machinery | `~/Projects/infrastructure/agent-ops/` |
+| SPX V2 product repo | `~/Projects/trading/live-systems/spx-0dte-bot-v2/` |
+| IBC (drives the Gateway) | `~/ibc/` — `gatewaystartmacos.sh`, `config.ini` |
+| LaunchAgent | `~/Library/LaunchAgents/com.spxbot.gateway.plist` |
+
+**A prompt that names a file must name a path that exists.** Pointing a session
+at `orchestration/spx-v2/STATE.md` with no clone on the machine is the same
+defect class as a stale claim: it reads as authoritative and delivers nothing.
 
 ## Standing facts that keep getting re-derived
 
