@@ -1,0 +1,54 @@
+{
+	"env": {
+		"PRIME_ENFORCE": "1"
+	},
+	"hooks": {
+		"SessionStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
+						"timeout": 15,
+						"statusMessage": "Loading Prime Agent mandate"
+					}
+				]
+			}
+		],
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
+						"timeout": 15
+					}
+				]
+			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "Edit|MultiEdit|Write|NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
+						"timeout": 15,
+						"statusMessage": "Prime Agent delegation gate"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "python3 \"${CLAUDE_PROJECT_DIR:-.}\"/.claude/hooks/prime_enforcer.py",
+						"timeout": 15,
+						"statusMessage": "Prime Agent delegation gate"
+					}
+				]
+			}
+		]
+	}
+}
