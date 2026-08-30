@@ -15,6 +15,7 @@ import {
 import { handleDaemonCommand } from "./daemon-command.js";
 import { runPs, runReap, runShutdownAll } from "./daemon-ps.js";
 import { DAEMON_UPDATE_RESTART_COORDINATOR_FLAG } from "./daemon-update-restart.js";
+import { parseSessionPatternsArgs, runSessionPatterns } from "./session-patterns-command.js";
 
 export interface PublicCommandResult {
 	handled: boolean;
@@ -136,6 +137,9 @@ async function runPublicCommand(args: string[]): Promise<PublicCommandResult> {
 		case "model":
 			return rewriteNestedCommand("model", "list", "--list-models", args.slice(1));
 		case "session":
+			if (args[1] === "patterns") {
+				return runSessionPatternsCommand(args.slice(2));
+			}
 			return rewriteNestedCommand("session", "export", "--export", args.slice(1));
 		case "config":
 			if (!requireArgumentCount(args.slice(1), 0, "config")) return HANDLED;
@@ -255,6 +259,15 @@ async function runDoctor(args: string[]): Promise<PublicCommandResult> {
 	} else {
 		await runPs(options.has("--json"));
 	}
+	return HANDLED;
+}
+
+async function runSessionPatternsCommand(args: string[]): Promise<PublicCommandResult> {
+	const parsed = parseSessionPatternsArgs(args);
+	if (!parsed.ok) {
+		return fail(parsed.error, `Run "${APP_NAME} help session patterns" for usage.`);
+	}
+	await runSessionPatterns(parsed.options);
 	return HANDLED;
 }
 

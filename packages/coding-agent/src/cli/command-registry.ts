@@ -137,13 +137,25 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
 	},
 	{
 		path: ["session"],
-		usage: "session export <file> [output]",
+		usage: "session <export|patterns>",
 		summary: "Manage saved sessions",
 	},
 	{
 		path: ["session", "export"],
 		usage: "session export <file> [output]",
 		summary: "Export a saved session to HTML",
+	},
+	{
+		path: ["session", "patterns"],
+		usage: "session patterns [--examples <n>] [--session-dir <dir>] [--json]",
+		summary: "Report deterministic patterns across saved sessions",
+		description:
+			"Each rule is a pure function of one session, so the same session store always produces the same counts. Use it to check reported session analytics against the sessions on disk.",
+		options: [
+			"--examples <n>       Example sessions to link per pattern (default: 3)",
+			"--session-dir <dir>  Analyze a specific session directory",
+			"--json               Print JSON",
+		],
 	},
 	{
 		path: ["config"],

@@ -221,7 +221,7 @@ Use `prime-agent model list [search]` to list available models.
 | `--session-dir <dir>` | Custom session storage directory |
 | `--no-session` | Ephemeral mode; do not save |
 
-Use `prime-agent session export <file> [output]` to export a session to HTML.
+Use `prime-agent session export <file> [output]` to export a session to HTML, and `prime-agent session patterns` to report deterministic rule-based patterns across saved sessions; see [Sessions](sessions.md).
 
 ### Tool Options
 
