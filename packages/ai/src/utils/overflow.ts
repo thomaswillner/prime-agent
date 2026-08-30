@@ -28,7 +28,12 @@ import type { AssistantMessage } from "../types.js";
  *   input filling the context window.
  * - Ollama: Some deployments truncate silently, others return errors like "prompt too long; exceeded max context length by X tokens"
  */
-const OVERFLOW_PATTERNS = [
+/**
+ * Overflow signals that name the prompt/context explicitly. A throttling or quota
+ * error cannot produce these strings, so they are trusted outright and are never
+ * vetoed by NON_OVERFLOW_PATTERNS.
+ */
+const UNAMBIGUOUS_OVERFLOW_PATTERNS = [
 	/prompt is too long/i, // Anthropic token overflow
 	/request_too_large/i, // Anthropic request byte-size overflow (HTTP 413)
 	/input is too long for requested model/i, // Amazon Bedrock
@@ -37,7 +42,6 @@ const OVERFLOW_PATTERNS = [
 	/maximum prompt length is \d+/i, // xAI (Grok)
 	/reduce the length of the messages/i, // Groq
 	/maximum context length is \d+ tokens/i, // OpenRouter (all backends)
-	/exceeds the limit of \d+/i, // GitHub Copilot
 	/exceeds the available context size/i, // llama.cpp server
 	/greater than the context length/i, // LM Studio
 	/context window exceeds limit/i, // MiniMax
@@ -45,19 +49,34 @@ const OVERFLOW_PATTERNS = [
 	/too large for model with \d+ maximum context length/i, // Mistral
 	/model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
 	/prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
-	/context[_ ]length[_ ]exceeded/i, // Generic fallback
-	/too many tokens/i, // Generic fallback
-	/token limit exceeded/i, // Generic fallback
-	/^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i, // Cerebras: 400/413 with no body
+	/^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i, // Cerebras: 400/413 with no body (429 is excluded by the anchor)
+];
+
+/**
+ * Generic fallbacks that a rate-limit or quota error can also produce, e.g. a
+ * tokens-per-minute cap reported as "token limit exceeded". Only these are
+ * subject to the NON_OVERFLOW_PATTERNS veto.
+ */
+const AMBIGUOUS_OVERFLOW_PATTERNS = [
+	/exceeds the limit of \d+/i, // GitHub Copilot ("prompt token count of X exceeds the limit of Y"), but also request quotas
+	/context[_ ]length[_ ]exceeded/i,
+	/too many tokens/i,
+	/token limit exceeded/i,
 ];
 
 /**
  * Patterns that indicate non-overflow errors (e.g. rate limiting, server errors).
- * Error messages matching any of these are excluded from overflow detection
- * even if they also match an OVERFLOW_PATTERN.
+ *
+ * These veto AMBIGUOUS_OVERFLOW_PATTERNS only. They deliberately do NOT veto an
+ * unambiguous overflow signal: these patterns are unanchored substring matches, so
+ * a genuine overflow whose text happens to also mention a rate limit (z.ai returns
+ * both; gateways append quota metadata to error bodies) would otherwise be
+ * discarded as throttling. A false negative here is expensive - the caller stops
+ * compacting and classifies the message as retryable, so the same oversized
+ * request is sent again.
  *
  * Example: Bedrock formats throttling errors as "ThrottlingException: Too many tokens,
- * please wait before trying again." which would match the /too many tokens/i overflow
+ * please wait before trying again." which would match the /too many tokens/i ambiguous
  * pattern without this exclusion.
  */
 const NON_OVERFLOW_PATTERNS = [
@@ -117,15 +136,25 @@ const NON_OVERFLOW_PATTERNS = [
 export function isContextOverflow(message: AssistantMessage, contextWindow?: number): boolean {
 	// Case 1: Check error message patterns
 	if (message.stopReason === "error" && message.errorMessage) {
-		// Skip messages matching known non-overflow patterns (e.g. throttling / rate-limit)
-		const isNonOverflow = NON_OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!));
-		if (!isNonOverflow && OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!))) {
+		const errorMessage = message.errorMessage;
+		if (UNAMBIGUOUS_OVERFLOW_PATTERNS.some((p) => p.test(errorMessage))) {
+			return true;
+		}
+		// Generic signals only count when nothing marks the error as throttling / rate-limit.
+		const isNonOverflow = NON_OVERFLOW_PATTERNS.some((p) => p.test(errorMessage));
+		if (!isNonOverflow && AMBIGUOUS_OVERFLOW_PATTERNS.some((p) => p.test(errorMessage))) {
 			return true;
 		}
 	}
 
+	// Cases 2 and 3 need the context window. Without it they cannot run at all, and this
+	// function reports a plain `false` that is indistinguishable from "checked, no overflow".
+	// Callers that pass `model?.contextWindow ?? 0` therefore silently lose silent-overflow
+	// detection whenever the model is unknown. See usesSilentOverflowDetection().
+	const windowKnown = typeof contextWindow === "number" && contextWindow > 0;
+
 	// Case 2: Silent overflow (z.ai style) - successful but usage exceeds context
-	if (contextWindow && message.stopReason === "stop") {
+	if (windowKnown && message.stopReason === "stop") {
 		const inputTokens = message.usage.input + message.usage.cacheRead;
 		if (inputTokens > contextWindow) {
 			return true;
@@ -135,7 +164,7 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 	// Case 3: Length-stop overflow (Xiaomi MiMo style) - server truncates oversized input
 	// to fit the context window, leaving no room for output. Returns stopReason "length"
 	// with output=0 and input+cacheRead filling the context window.
-	if (contextWindow && message.stopReason === "length" && message.usage.output === 0) {
+	if (windowKnown && message.stopReason === "length" && message.usage.output === 0) {
 		const inputTokens = message.usage.input + message.usage.cacheRead;
 		if (inputTokens >= contextWindow * 0.99) {
 			return true;
@@ -146,8 +175,17 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 }
 
 /**
+ * Whether a given context window value lets isContextOverflow() run its
+ * usage-based checks (cases 2 and 3). Exported so callers and tests can assert
+ * the guard is actually able to fire rather than trusting a `false` return.
+ */
+export function usesSilentOverflowDetection(contextWindow?: number): boolean {
+	return typeof contextWindow === "number" && contextWindow > 0;
+}
+
+/**
  * Get the overflow patterns for testing purposes.
  */
 export function getOverflowPatterns(): RegExp[] {
-	return [...OVERFLOW_PATTERNS];
+	return [...UNAMBIGUOUS_OVERFLOW_PATTERNS, ...AMBIGUOUS_OVERFLOW_PATTERNS];
 }

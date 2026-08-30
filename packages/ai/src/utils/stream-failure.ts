@@ -114,7 +114,17 @@ export function truncateRawPayload(raw: string): string {
 	return raw.length > MAX_RAW_LENGTH ? `${raw.slice(0, MAX_RAW_LENGTH)}…` : raw;
 }
 
-function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; detail?: string } {
+interface StreamFailureParts {
+	info: StreamFailureInfo;
+	detail?: string;
+	/**
+	 * True when the provider gave neither a structured error type nor a body message,
+	 * so `error.message` was the only evidence classification had to work with.
+	 */
+	classifiedFromMessageOnly?: boolean;
+}
+
+function extractStreamFailureParts(error: unknown): StreamFailureParts {
 	if (error instanceof StreamFailureError) return { info: error.info };
 	if (!(error instanceof Error)) return { info: { kind: "unknown" } };
 
@@ -160,6 +170,7 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 	const rawRequestId = err.requestID ?? err.request_id ?? err.$metadata?.requestId ?? headerRequestId;
 	const requestId = typeof rawRequestId === "string" ? rawRequestId : undefined;
 
+	const detail = typeof bodyMessage === "string" ? bodyMessage : undefined;
 	return {
 		info: {
 			kind: classifyStreamFailure(providerErrorType ?? error.message, status),
@@ -167,7 +178,8 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 			status,
 			requestId,
 		},
-		detail: typeof bodyMessage === "string" ? bodyMessage : undefined,
+		detail,
+		classifiedFromMessageOnly: providerErrorType === undefined && detail === undefined,
 	};
 }
 
@@ -185,14 +197,23 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
  * the provider's own short message, never the raw payload/trace. Unrecognized
  * errors pass through verbatim so their text (which downstream retry matching
  * may depend on) is preserved.
+ *
+ * When classification had only `error.message` to go on, that text is kept as the
+ * detail rather than replaced by the canned kind string. Replacing it destroys the
+ * evidence downstream matchers read: a message like "prompt is too long: ...; server
+ * overloaded" classifies as `overloaded` off one incidental word, and collapsing it
+ * to "Provider overloaded" hides the overflow from isContextOverflow(), which then
+ * lets the caller retry the same oversized request instead of compacting.
  */
 export function formatStreamFailureMessage(error: unknown): string {
 	if (error instanceof StreamFailureError) return error.message;
-	const { info, detail } = extractStreamFailureParts(error);
+	const { info, detail, classifiedFromMessageOnly } = extractStreamFailureParts(error);
 	if (info.kind === "unknown") {
 		return error instanceof Error ? error.message : JSON.stringify(error);
 	}
-	return streamFailureMessage(info, detail);
+	const preserved =
+		detail ?? (classifiedFromMessageOnly && error instanceof Error ? truncateRawPayload(error.message) : undefined);
+	return streamFailureMessage(info, preserved);
 }
 
 const log = getLogger("ai.provider");
