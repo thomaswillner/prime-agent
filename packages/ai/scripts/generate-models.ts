@@ -115,9 +115,11 @@ interface PrimeInferenceModelMetadata {
 // enforces a different limit (verified against the live API) or fill gaps for
 // models OpenRouter does not list or leaves incomplete.
 const PRIME_INFERENCE_MODEL_METADATA: Record<string, PrimeInferenceModelMetadata> = {
-	// This route accepts 200k, checked against the live API 2026-07-08. The
-	// other Claude routes take the full window their spec lists.
+	// These routes accept 200k, checked against the live API 2026-07-08. The
+	// public catalog now advertises 1M for Sonnet 4.5, but no newer credentialed
+	// canary has proven that the routed API serves more than 200k.
 	"anthropic/claude-sonnet-4": { contextWindow: 200000 },
+	"anthropic/claude-sonnet-4.5": { contextWindow: 200000 },
 	// Windows confirmed against the live API 2026-07-08 where they are SMALLER
 	// than the published spec — over-declaring breaks context tracking.
 	"meta-llama/llama-3.2-1b-instruct": { contextWindow: 60000 },
@@ -653,14 +655,14 @@ function createPrimeInferenceModel(
 	const vision = override?.vision ?? openRouter?.vision ?? false;
 	const cacheCosts = getPrimeInferenceCacheCosts(entry.id, entry.input);
 	const contextWindow =
-		entry.contextWindow ??
 		override?.contextWindow ??
+		entry.contextWindow ??
 		openRouter?.contextWindow ??
 		PRIME_INFERENCE_DEFAULT_CONTEXT_WINDOW;
 	// Sources are independent, so an OpenRouter output cap can exceed a
 	// gateway-measured window override; clamp to keep the pair coherent.
 	const maxTokens = Math.min(
-		entry.maxTokens ?? override?.maxTokens ?? openRouter?.maxTokens ?? PRIME_INFERENCE_DEFAULT_MAX_TOKENS,
+		override?.maxTokens ?? entry.maxTokens ?? openRouter?.maxTokens ?? PRIME_INFERENCE_DEFAULT_MAX_TOKENS,
 		contextWindow,
 	);
 	return {
@@ -1006,6 +1008,36 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					api: "openai-completions",
 					provider: "cloudflare-workers-ai",
 					baseUrl: CLOUDFLARE_WORKERS_AI_BASE_URL,
+					reasoning: m.reasoning === true,
+					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					cost: {
+						input: m.cost?.input || 0,
+						output: m.cost?.output || 0,
+						cacheRead: m.cost?.cache_read || 0,
+						cacheWrite: m.cost?.cache_write || 0,
+					},
+					contextWindow: m.limit?.context || 4096,
+					maxTokens: m.limit?.output || 4096,
+					compat: { sendSessionAffinityHeaders: true },
+				});
+			}
+		}
+
+		// Workers AI models are not always duplicated in models.dev's AI Gateway
+		// provider listing. The gateway /compat endpoint accepts the same catalog
+		// ids with a workers-ai/ prefix, so derive these routes from the direct
+		// Workers AI catalog instead of dropping them when that duplicate vanishes.
+		if (data["cloudflare-workers-ai"]?.models) {
+			for (const [nativeId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
+				const m = model as ModelsDevModel;
+				if (m.tool_call !== true) continue;
+
+				models.push({
+					id: `workers-ai/${nativeId}`,
+					name: m.name || nativeId,
+					api: "openai-completions",
+					provider: "cloudflare-ai-gateway",
+					baseUrl: CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
 					reasoning: m.reasoning === true,
 					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					cost: {

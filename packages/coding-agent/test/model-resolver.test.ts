@@ -439,6 +439,19 @@ describe("default model selection", () => {
 		expect(defaultModelPerProvider["vercel-ai-gateway"]).toBe("zai/glm-5.1");
 	});
 
+	test("cloudflare AI Gateway defaults to Workers AI Kimi", () => {
+		expect(defaultModelPerProvider["cloudflare-ai-gateway"]).toBe("workers-ai/@cf/moonshotai/kimi-k2.6");
+
+		const model = getModels("cloudflare-ai-gateway").find(
+			(candidate) => candidate.id === defaultModelPerProvider["cloudflare-ai-gateway"],
+		);
+		expect(model).toMatchObject({
+			api: "openai-completions",
+			provider: "cloudflare-ai-gateway",
+			baseUrl: "https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}/compat",
+		});
+	});
+
 	test("defaults invalidated by the current catalog remain resolvable", () => {
 		const providers = ["cerebras", "fireworks", "cloudflare-ai-gateway"] satisfies KnownProvider[];
 
