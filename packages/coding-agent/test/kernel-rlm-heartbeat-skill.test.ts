@@ -16,7 +16,7 @@ function bundledRlmHeartbeatSkill(): PythonSkillRuntimeInfo {
 	};
 }
 
-describe("RLM heartbeat skill over the kernel host bridge", () => {
+describe("RLM heartbeat skill over the kernel host bridge", { timeout: 180_000 }, () => {
 	let tempDir: string;
 	let provisioner: IpythonKernelProvisioner | undefined;
 

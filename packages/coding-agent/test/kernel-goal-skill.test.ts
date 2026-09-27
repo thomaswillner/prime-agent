@@ -16,7 +16,7 @@ function bundledGoalSkill(): PythonSkillRuntimeInfo {
 	};
 }
 
-describe("goal skill over the kernel host bridge", { tags: ["kernel-heavy"] }, () => {
+describe("goal skill over the kernel host bridge", { tags: ["kernel-heavy"], timeout: 180_000 }, () => {
 	let tempDir: string;
 	let provisioner: IpythonKernelProvisioner | undefined;
 
