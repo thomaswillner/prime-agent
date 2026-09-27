@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Api, Context, Model, StreamOptions, ToolResultMessage } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
@@ -428,7 +429,7 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 			"claude-sonnet-4 - should handle emoji in tool results",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testEmojiInToolResults(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -437,7 +438,7 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 			"claude-sonnet-4 - should handle real-world LinkedIn comment data with emoji",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testRealWorldLinkedInData(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -446,7 +447,7 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 			"claude-sonnet-4 - should handle unpaired high surrogate (0xD83D) in tool results",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testUnpairedHighSurrogate(llm, { apiKey: githubCopilotToken });
 			},
 		);

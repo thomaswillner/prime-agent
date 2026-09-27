@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { getModel } from "../src/models.js";
 import type { Context } from "../src/types.js";
+import {
+	getGitHubCopilotClaudeTestModel,
+	getGitHubCopilotNonAdaptiveClaudeTestModel,
+} from "./github-copilot-test-model.js";
 
 const mockState = vi.hoisted(() => ({
 	constructorOpts: undefined as Record<string, unknown> | undefined,
@@ -54,7 +57,7 @@ describe("Copilot Claude via Anthropic Messages", () => {
 	};
 
 	it("uses Bearer auth, Copilot headers, and valid Anthropic Messages payload", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.5");
+		const model = getGitHubCopilotClaudeTestModel();
 		expect(model.api).toBe("anthropic-messages");
 
 		const { streamAnthropic } = await import("../src/providers/anthropic.js");
@@ -85,14 +88,14 @@ describe("Copilot Claude via Anthropic Messages", () => {
 
 		// Payload is valid Anthropic Messages format
 		const params = mockState.createParams!;
-		expect(params.model).toBe("claude-sonnet-4.5");
+		expect(params.model).toBe(model.id);
 		expect(params.stream).toBe(true);
 		expect(params.max_tokens).toBeGreaterThan(0);
 		expect(Array.isArray(params.messages)).toBe(true);
 	});
 
 	it("includes interleaved-thinking beta when reasoning is enabled", async () => {
-		const model = getModel("github-copilot", "claude-sonnet-4.5");
+		const model = getGitHubCopilotNonAdaptiveClaudeTestModel();
 		const { streamAnthropic } = await import("../src/providers/anthropic.js");
 		const s = streamAnthropic(model, context, {
 			apiKey: "tid_copilot_session_test_token",

@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import { getModels, type KnownProvider, type Model } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import {
 	defaultModelPerProvider,
@@ -432,11 +432,19 @@ describe("default model selection", () => {
 		expect(defaultModelPerProvider.zai).toBe("glm-5.1");
 		expect(defaultModelPerProvider.minimax).toBe("MiniMax-M2.7");
 		expect(defaultModelPerProvider["minimax-cn"]).toBe("MiniMax-M2.7");
-		expect(defaultModelPerProvider.cerebras).toBe("zai-glm-4.7");
+		expect(defaultModelPerProvider.cerebras).toBe("gpt-oss-120b");
 	});
 
 	test("ai-gateway default tracks current model", () => {
 		expect(defaultModelPerProvider["vercel-ai-gateway"]).toBe("zai/glm-5.1");
+	});
+
+	test("defaults invalidated by the current catalog remain resolvable", () => {
+		const providers = ["cerebras", "fireworks", "cloudflare-ai-gateway"] satisfies KnownProvider[];
+
+		for (const provider of providers) {
+			expect(getModels(provider).some((model) => model.id === defaultModelPerProvider[provider])).toBe(true);
+		}
 	});
 
 	test("findInitialModel accepts explicit provider custom model ids", async () => {

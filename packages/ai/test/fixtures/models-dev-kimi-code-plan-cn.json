@@ -1,0 +1,106 @@
+{
+	"kimi-code-plan-cn": {
+		"models": {
+			"kimi-for-coding-highspeed": {
+				"id": "kimi-for-coding-highspeed",
+				"name": "Kimi For Coding HighSpeed",
+				"tool_call": true,
+				"reasoning": true,
+				"limit": {
+					"context": 262144,
+					"output": 32768
+				},
+				"modalities": {
+					"input": [
+						"text",
+						"image"
+					],
+					"output": [
+						"text"
+					]
+				},
+				"cost": {
+					"input": 0,
+					"output": 0,
+					"cache_read": 0,
+					"cache_write": 0
+				}
+			},
+			"kimi-for-coding": {
+				"id": "kimi-for-coding",
+				"name": "kimi-for-coding",
+				"tool_call": true,
+				"reasoning": true,
+				"limit": {
+					"context": 1048576,
+					"output": 32768
+				},
+				"modalities": {
+					"input": [
+						"text",
+						"image"
+					],
+					"output": [
+						"text"
+					]
+				},
+				"cost": {
+					"input": 0,
+					"output": 0,
+					"cache_read": 0,
+					"cache_write": 0
+				}
+			},
+			"k3-256k": {
+				"id": "k3-256k",
+				"name": "Kimi K3-256K",
+				"tool_call": true,
+				"reasoning": true,
+				"limit": {
+					"context": 262144,
+					"output": 131072
+				},
+				"modalities": {
+					"input": [
+						"text",
+						"image"
+					],
+					"output": [
+						"text"
+					]
+				},
+				"cost": {
+					"input": 0,
+					"output": 0,
+					"cache_read": 0,
+					"cache_write": 0
+				}
+			},
+			"k3": {
+				"id": "k3",
+				"name": "Kimi K3",
+				"tool_call": true,
+				"reasoning": true,
+				"limit": {
+					"context": 1048576,
+					"output": 131072
+				},
+				"modalities": {
+					"input": [
+						"text",
+						"image"
+					],
+					"output": [
+						"text"
+					]
+				},
+				"cost": {
+					"input": 0,
+					"output": 0,
+					"cache_read": 0,
+					"cache_write": 0
+				}
+			}
+		}
+	}
+}

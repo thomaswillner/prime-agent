@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Changed the Cerebras, Fireworks, and Cloudflare AI Gateway defaults to current catalog-backed models ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
 - Added `app.messages.expand` (`ctrl+p`) to collapse or expand agent-to-agent messages separately from `ctrl+o` tool output.
 - Added a `ctrl+t` expand hint to collapsed thinking blocks, matching the tool output hint.
 - Changed expand/collapse hints to a consistent bracketed `(Ctrl+O to expand)` style across tool, message, summary, and error rows.

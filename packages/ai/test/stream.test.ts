@@ -8,6 +8,7 @@ import { getEnvApiKey } from "../src/env-api-keys.js";
 import { getModel, getModels } from "../src/models.js";
 import { complete, stream } from "../src/stream.js";
 import type { Api, Context, ImageContent, Model, StreamOptions, Tool, ToolResultMessage } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
@@ -1247,7 +1248,7 @@ describe("Generate E2E Tests", () => {
 	});
 
 	describe("GitHub Copilot Provider (claude-sonnet-4 via Anthropic Messages)", () => {
-		const llm = getModel("github-copilot", "claude-sonnet-4.5");
+		const llm = getGitHubCopilotClaudeTestModel();
 
 		it.skipIf(!githubCopilotToken)("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm, { apiKey: githubCopilotToken });

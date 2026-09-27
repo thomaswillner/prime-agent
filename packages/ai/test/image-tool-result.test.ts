@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Api, Context, Model, Tool, ToolResultMessage } from "../src/index.js";
 import { complete, getModel } from "../src/index.js";
 import type { StreamOptions } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getKimiCodingTestModel } from "./kimi-test-model.js";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -452,7 +453,7 @@ describe("Tool Results with Images", () => {
 			"claude-sonnet-4 - should handle tool result with only image",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await handleToolWithImageResult(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -461,7 +462,7 @@ describe("Tool Results with Images", () => {
 			"claude-sonnet-4 - should handle tool result with text and image",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await handleToolWithTextAndImageResult(llm, { apiKey: githubCopilotToken });
 			},
 		);

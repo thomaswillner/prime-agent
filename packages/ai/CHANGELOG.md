@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fixed Kimi coding models disappearing when models.dev uses its current China coding-plan provider key ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05
