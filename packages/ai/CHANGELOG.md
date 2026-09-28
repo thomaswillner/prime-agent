@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 - Fixed Kimi coding models disappearing when models.dev uses its current China coding-plan provider key ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
-- Changed Kimi For Coding to its current models.dev entry: the 1,048,576-token context window Kimi documents, and the display name `kimi-for-coding` ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
+- Changed Kimi For Coding's display name to `kimi-for-coding`, the name models.dev now reports ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
 - Changed the model catalog snapshot to current upstream data, adding 405 models and removing 145, including 18 Kimi and Moonshot entries under `moonshotai`, `moonshotai-cn`, `fireworks` and the Cloudflare AI Gateway ([#19](https://github.com/thomaswillner/prime-agent/issues/19)).
 
 ## [0.7.1] - 2026-08-07

@@ -71,7 +71,12 @@ export function getKimiCodingModels(data: ModelsDevCatalog): Model<"anthropic-me
 				cacheRead: model.cost?.cache_read || 0,
 				cacheWrite: model.cost?.cache_write || 0,
 			},
-			contextWindow: model.limit?.context || 4096,
+			// Kimi's sources disagree for kimi-for-coding: models.dev and kimi.com list 1048576, the official
+			// kimi-code config lists 262144. Cap at main's 262144 until verified; a lower upstream limit wins.
+			contextWindow:
+				normalizedId === "kimi-for-coding"
+					? Math.min(model.limit?.context || 262144, 262144)
+					: model.limit?.context || 4096,
 			maxTokens: model.limit?.output || 4096,
 		});
 	}

@@ -29,8 +29,26 @@ describe("models.dev Kimi ingestion", () => {
 			"https://api.kimi.com/coding",
 			"https://api.kimi.com/coding",
 		]);
+		expect(new Set(models.map((model) => model.api))).toEqual(new Set(["anthropic-messages"]));
+		expect(models.every((model) => model.headers?.["User-Agent"] === "KimiCLI/1.5")).toBe(true);
 		expect(fixture["kimi-code-plan-cn"]?.models?.["kimi-for-coding"]?.limit?.context).toBe(1048576);
-		expect(models.map((model) => model.contextWindow)).toEqual([262144, 1048576, 262144, 1048576]);
+		expect(models.find((model) => model.id === "kimi-for-coding")?.contextWindow).toBe(262144);
+		expect(models.find((model) => model.id === "k3")?.contextWindow).toBe(1048576);
+	});
+
+	it("caps kimi-for-coding context without raising a lower or missing upstream limit", () => {
+		const withContext = (context: number | undefined): ModelsDevCatalog => {
+			const catalog = structuredClone(fixture);
+			const model = catalog["kimi-code-plan-cn"]?.models?.["kimi-for-coding"];
+			if (model && context === undefined) delete model.limit;
+			else if (model) model.limit = { ...model.limit, context };
+			return catalog;
+		};
+		const contextOf = (catalog: ModelsDevCatalog) =>
+			getKimiCodingModels(catalog).find((model) => model.id === "kimi-for-coding")?.contextWindow;
+
+		expect(contextOf(withContext(131072))).toBe(131072);
+		expect(contextOf(withContext(undefined))).toBe(262144);
 	});
 
 	it("uses the legacy provider only when the current China key is absent", () => {
