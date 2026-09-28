@@ -31,7 +31,7 @@ describe("Prime Inference models", () => {
 				"meta-llama/llama-4-maverick",
 				"minimax/minimax-m3",
 				"moonshotai/kimi-k2.7-code",
-				"nvidia/nemotron-3-super-120b-a12b",
+				"nvidia/nemotron-3-nano-30b-a3b",
 				"openai/gpt-5.4",
 				"openai/gpt-5.5",
 				"qwen/qwen3-coder-next",
@@ -97,14 +97,13 @@ describe("Prime Inference models", () => {
 		expect(gemini.reasoning).toBe(true);
 
 		// Modality and reasoning are read from OpenRouter's published spec for the
-		// same upstream model, but the Prime route enforces a smaller window and
-		// output cap than that spec lists (1M/16k), so the curated override wins
-		// for contextWindow and maxTokens.
-		const nemotronSuper = getModel("prime-inference", "nvidia/nemotron-3-super-120b-a12b");
-		expect(nemotronSuper.reasoning).toBe(true);
-		expect(nemotronSuper.input).toEqual(["text"]);
-		expect(nemotronSuper.contextWindow).toBe(262144);
-		expect(nemotronSuper.maxTokens).toBe(4096);
+		// same upstream model. This current catalog entry has no Prime-specific
+		// override, so both limits come from that published spec.
+		const nemotronNano = getModel("prime-inference", "nvidia/nemotron-3-nano-30b-a3b");
+		expect(nemotronNano.reasoning).toBe(true);
+		expect(nemotronNano.input).toEqual(["text"]);
+		expect(nemotronNano.contextWindow).toBe(262144);
+		expect(nemotronNano.maxTokens).toBe(235929);
 
 		const maverick = getModel("prime-inference", "meta-llama/llama-4-maverick");
 		expect(maverick.contextWindow).toBe(1048576);
@@ -202,8 +201,8 @@ describe("Prime Inference models", () => {
 		expect(getModel("prime-inference", "anthropic/claude-sonnet-4.6").contextWindow).toBe(1000000);
 		expect(getModel("prime-inference", "anthropic/claude-sonnet-5").contextWindow).toBe(1000000);
 		expect(getModel("prime-inference", "anthropic/claude-haiku-4.5").contextWindow).toBe(200000);
-		// Confirmed against the live API: this route serves a 200k window, not the
-		// larger one the upstream model's published spec lists.
+		// The public catalog advertises 1M, but this route last accepted only 200k in a live canary.
+		// Keep the behavioral cap until a credentialed canary proves the larger window is served.
 		expect(getModel("prime-inference", "anthropic/claude-sonnet-4.5").contextWindow).toBe(200000);
 	});
 

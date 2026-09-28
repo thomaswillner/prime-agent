@@ -25,11 +25,12 @@
 import { writeFileSync } from "fs";
 import { Type } from "typebox";
 import { beforeAll, describe, expect, it } from "vitest";
-import { getModel } from "../src/models.js";
+import { getModel, getModels } from "../src/models.js";
 import { completeSimple, getEnvApiKey } from "../src/stream.js";
 import type { Api, AssistantMessage, Message, Model, Tool, ToolResultMessage } from "../src/types.js";
 import { hasAzureOpenAICredentials } from "./azure-utils.js";
 import { hasCloudflareAiGatewayCredentials, hasCloudflareWorkersAICredentials } from "./cloudflare-utils.js";
+import { getGitHubCopilotClaudeTestModel, getGitHubCopilotCodexTestModel } from "./github-copilot-test-model.js";
 import { getKimiCodingTestModel } from "./kimi-test-model.js";
 import { resolveApiKey } from "./oauth.js";
 
@@ -53,6 +54,12 @@ interface ProviderModelPair {
 	upstreamApiKeyEnv?: string;
 }
 
+function getCurrentModelId(provider: Parameters<typeof getModels>[0], api?: Api): string {
+	const model = api ? getModels(provider).find((candidate) => candidate.api === api) : getModels(provider)[0];
+	if (!model) throw new Error(`No ${provider}${api ? ` ${api}` : ""} model is available`);
+	return model.id;
+}
+
 const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// Anthropic
 	{ provider: "anthropic", model: "claude-sonnet-4-5", label: "anthropic-claude-sonnet-4-5" },
@@ -72,10 +79,14 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// Prime Inference
 	{ provider: "prime-inference", model: "openai/gpt-5.5", label: "prime-inference-gpt-5.5" },
 	// GitHub Copilot
-	{ provider: "github-copilot", model: "claude-sonnet-4.5", label: "copilot-claude-sonnet-4.5" },
-	{ provider: "github-copilot", model: "gpt-5.1-codex", label: "copilot-gpt-5.1-codex" },
-	{ provider: "github-copilot", model: "gemini-3-flash-preview", label: "copilot-gemini-3-flash-preview" },
-	{ provider: "github-copilot", model: "grok-code-fast-1", label: "copilot-grok-code-fast-1" },
+	{ provider: "github-copilot", model: getGitHubCopilotClaudeTestModel().id, label: "copilot-claude" },
+	{ provider: "github-copilot", model: getGitHubCopilotCodexTestModel().id, label: "copilot-codex" },
+	{
+		provider: "github-copilot",
+		model: getCurrentModelId("github-copilot", "openai-completions"),
+		label: "copilot-openai-completions",
+	},
+
 	// Amazon Bedrock
 	{
 		provider: "amazon-bedrock",
@@ -85,7 +96,7 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// xAI
 	{ provider: "xai", model: "grok-code-fast-1", label: "xai-grok-code-fast-1" },
 	// Cerebras
-	{ provider: "cerebras", model: "zai-glm-4.7", label: "cerebras-zai-glm-4.7" },
+	{ provider: "cerebras", model: "gpt-oss-120b", label: "cerebras-gpt-oss-120b" },
 	// Cloudflare Workers AI
 	{ provider: "cloudflare-workers-ai", model: "@cf/moonshotai/kimi-k2.6", label: "cloudflare-kimi-k2.6" },
 	// Cloudflare AI Gateway
@@ -96,8 +107,8 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	},
 	{
 		provider: "cloudflare-ai-gateway",
-		model: "claude-sonnet-4-5",
-		label: "cloudflare-gateway-claude-sonnet-4-5",
+		model: "claude-sonnet-4.5",
+		label: "cloudflare-gateway-claude-sonnet-4.5",
 		upstreamApiKeyEnv: "ANTHROPIC_API_KEY",
 	},
 	{

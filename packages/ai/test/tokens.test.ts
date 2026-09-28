@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { stream } from "../src/stream.js";
 import type { Api, Context, Model, StreamOptions } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
@@ -301,7 +302,7 @@ describe("Token Statistics on Abort", () => {
 			"claude-sonnet-4 - should include token stats when aborted mid-stream",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testTokensOnAbort(llm, { apiKey: githubCopilotToken });
 			},
 		);

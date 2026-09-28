@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Api, Context, Model, StreamOptions, Usage } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
@@ -697,7 +698,7 @@ describe("totalTokens field", () => {
 			"claude-sonnet-4 - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 
 				console.log(`\nGitHub Copilot / ${llm.id}:`);
 				const { first, second } = await testTotalTokensWithCache(llm, { apiKey: githubCopilotToken });

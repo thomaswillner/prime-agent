@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Api, AssistantMessage, Context, Model, StreamOptions, UserMessage } from "../src/types.js";
+import { getGitHubCopilotClaudeTestModel } from "./github-copilot-test-model.js";
 import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
@@ -657,7 +658,7 @@ describe("AI Providers Empty Message Tests", () => {
 			"claude-sonnet-4 - should handle empty content array",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testEmptyMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -666,7 +667,7 @@ describe("AI Providers Empty Message Tests", () => {
 			"claude-sonnet-4 - should handle empty string content",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testEmptyStringMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -675,7 +676,7 @@ describe("AI Providers Empty Message Tests", () => {
 			"claude-sonnet-4 - should handle whitespace-only content",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testWhitespaceOnlyMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
@@ -684,7 +685,7 @@ describe("AI Providers Empty Message Tests", () => {
 			"claude-sonnet-4 - should handle empty assistant message in conversation",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "claude-sonnet-4.5");
+				const llm = getGitHubCopilotClaudeTestModel();
 				await testEmptyAssistantMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);

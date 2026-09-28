@@ -19,34 +19,11 @@ import {
 	type OpenAICompletionsCompat,
 } from "../src/types.js";
 import { MODELS as EXISTING_MODELS } from "../src/models.generated.js";
+import { getKimiCodingModels, type ModelsDevModel } from "./models-dev-kimi.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, "..");
-
-interface ModelsDevModel {
-	id: string;
-	name: string;
-	tool_call?: boolean;
-	reasoning?: boolean;
-	limit?: {
-		context?: number;
-		output?: number;
-	};
-	cost?: {
-		input?: number;
-		output?: number;
-		cache_read?: number;
-		cache_write?: number;
-	};
-	modalities?: {
-		input?: string[];
-		output?: string[];
-	};
-	provider?: {
-		npm?: string;
-	};
-}
 
 interface AiGatewayModel {
 	id: string;
@@ -67,10 +44,6 @@ const COPILOT_STATIC_HEADERS = {
 	"Editor-Version": "vscode/1.107.0",
 	"Editor-Plugin-Version": "copilot-chat/0.35.0",
 	"Copilot-Integration-Id": "vscode-chat",
-} as const;
-
-const KIMI_STATIC_HEADERS = {
-	"User-Agent": "KimiCLI/1.5",
 } as const;
 
 const AI_GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1";
@@ -143,7 +116,8 @@ interface PrimeInferenceModelMetadata {
 // models OpenRouter does not list or leaves incomplete.
 const PRIME_INFERENCE_MODEL_METADATA: Record<string, PrimeInferenceModelMetadata> = {
 	// These routes accept 200k, checked against the live API 2026-07-08. The
-	// other Claude routes take the full window their spec lists.
+	// public catalog now advertises 1M for Sonnet 4.5, but no newer credentialed
+	// canary has proven that the routed API serves more than 200k.
 	"anthropic/claude-sonnet-4": { contextWindow: 200000 },
 	"anthropic/claude-sonnet-4.5": { contextWindow: 200000 },
 	// Windows confirmed against the live API 2026-07-08 where they are SMALLER
@@ -681,14 +655,14 @@ function createPrimeInferenceModel(
 	const vision = override?.vision ?? openRouter?.vision ?? false;
 	const cacheCosts = getPrimeInferenceCacheCosts(entry.id, entry.input);
 	const contextWindow =
-		entry.contextWindow ??
 		override?.contextWindow ??
+		entry.contextWindow ??
 		openRouter?.contextWindow ??
 		PRIME_INFERENCE_DEFAULT_CONTEXT_WINDOW;
 	// Sources are independent, so an OpenRouter output cap can exceed a
 	// gateway-measured window override; clamp to keep the pair coherent.
 	const maxTokens = Math.min(
-		entry.maxTokens ?? override?.maxTokens ?? openRouter?.maxTokens ?? PRIME_INFERENCE_DEFAULT_MAX_TOKENS,
+		override?.maxTokens ?? entry.maxTokens ?? openRouter?.maxTokens ?? PRIME_INFERENCE_DEFAULT_MAX_TOKENS,
 		contextWindow,
 	);
 	return {
@@ -1034,6 +1008,36 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					api: "openai-completions",
 					provider: "cloudflare-workers-ai",
 					baseUrl: CLOUDFLARE_WORKERS_AI_BASE_URL,
+					reasoning: m.reasoning === true,
+					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					cost: {
+						input: m.cost?.input || 0,
+						output: m.cost?.output || 0,
+						cacheRead: m.cost?.cache_read || 0,
+						cacheWrite: m.cost?.cache_write || 0,
+					},
+					contextWindow: m.limit?.context || 4096,
+					maxTokens: m.limit?.output || 4096,
+					compat: { sendSessionAffinityHeaders: true },
+				});
+			}
+		}
+
+		// Workers AI models are not always duplicated in models.dev's AI Gateway
+		// provider listing. The gateway /compat endpoint accepts the same catalog
+		// ids with a workers-ai/ prefix, so derive these routes from the direct
+		// Workers AI catalog instead of dropping them when that duplicate vanishes.
+		if (data["cloudflare-workers-ai"]?.models) {
+			for (const [nativeId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
+				const m = model as ModelsDevModel;
+				if (m.tool_call !== true) continue;
+
+				models.push({
+					id: `workers-ai/${nativeId}`,
+					name: m.name || nativeId,
+					api: "openai-completions",
+					provider: "cloudflare-ai-gateway",
+					baseUrl: CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
 					reasoning: m.reasoning === true,
 					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					cost: {
@@ -1416,44 +1420,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			}
 		}
 
-		// Process Kimi For Coding models
-		if (data["kimi-for-coding"]?.models) {
-			const kimiModels = data["kimi-for-coding"].models as Record<string, ModelsDevModel>;
-			const hasCanonicalModel = Object.prototype.hasOwnProperty.call(kimiModels, "kimi-for-coding");
-
-			const kimiAliases = new Set(["k2p5", "k2p6"]);
-
-			for (const [modelId, model] of Object.entries(kimiModels)) {
-				const m = model as ModelsDevModel;
-				if (m.tool_call !== true) continue;
-				// models.dev may expose versioned aliases (e.g. k2p5/k2p6).
-				// Normalize aliases to the canonical model id and drop duplicates when canonical exists.
-				if (kimiAliases.has(modelId) && hasCanonicalModel) continue;
-
-				const normalizedId = kimiAliases.has(modelId) ? "kimi-for-coding" : modelId;
-				const normalizedName = kimiAliases.has(modelId) ? "Kimi For Coding" : m.name || normalizedId;
-
-				models.push({
-					id: normalizedId,
-					name: normalizedName,
-					api: "anthropic-messages",
-					provider: "kimi-coding",
-					// Kimi For Coding's Anthropic-compatible API - SDK appends /v1/messages
-					baseUrl: "https://api.kimi.com/coding",
-					headers: { ...KIMI_STATIC_HEADERS },
-					reasoning: m.reasoning === true,
-					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
-					cost: {
-						input: m.cost?.input || 0,
-						output: m.cost?.output || 0,
-						cacheRead: m.cost?.cache_read || 0,
-						cacheWrite: m.cost?.cache_write || 0,
-					},
-					contextWindow: m.limit?.context || 4096,
-					maxTokens: m.limit?.output || 4096,
-				});
-			}
-		}
+		models.push(...getKimiCodingModels(data));
 
 		// Process Moonshot AI models
 		const moonshotVariants = [
