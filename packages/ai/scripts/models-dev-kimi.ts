@@ -35,6 +35,7 @@ const KIMI_STATIC_HEADERS = {
 } as const;
 
 export function getKimiCodingModels(data: ModelsDevCatalog): Model<"anthropic-messages">[] {
+	// Legacy key fallback: models.dev renamed this provider without notice (#19); tolerate a revert or older snapshot.
 	const kimiProvider = Object.prototype.hasOwnProperty.call(data, "kimi-code-plan-cn")
 		? data["kimi-code-plan-cn"]
 		: data["kimi-for-coding"];
