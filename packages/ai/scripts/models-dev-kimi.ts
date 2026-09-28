@@ -70,12 +70,7 @@ export function getKimiCodingModels(data: ModelsDevCatalog): Model<"anthropic-me
 				cacheRead: model.cost?.cache_read || 0,
 				cacheWrite: model.cost?.cache_write || 0,
 			},
-			// models.dev now reports 1048576 for kimi-for-coding; main shipped 262144 from the retired key.
-			// Cap conservatively (not verified against Kimi docs); a lower upstream limit still wins.
-			contextWindow:
-				normalizedId === "kimi-for-coding"
-					? Math.min(model.limit?.context || 262144, 262144)
-					: model.limit?.context || 4096,
+			contextWindow: model.limit?.context || 4096,
 			maxTokens: model.limit?.output || 4096,
 		});
 	}
