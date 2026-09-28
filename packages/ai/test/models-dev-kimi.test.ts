@@ -29,6 +29,8 @@ describe("models.dev Kimi ingestion", () => {
 			"https://api.kimi.com/coding",
 			"https://api.kimi.com/coding",
 		]);
+		expect(fixture["kimi-code-plan-cn"]?.models?.["kimi-for-coding"]?.limit?.context).toBe(1048576);
+		expect(models.find((model) => model.id === "kimi-for-coding")?.contextWindow).toBe(262144);
 	});
 
 	it("uses the legacy provider only when the current China key is absent", () => {

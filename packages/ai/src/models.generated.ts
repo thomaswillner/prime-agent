@@ -8496,7 +8496,7 @@ export const MODELS = {
 				cacheRead: 0,
 				cacheWrite: 0,
 			},
-			contextWindow: 1048576,
+			contextWindow: 262144,
 			maxTokens: 32768,
 		} satisfies Model<"anthropic-messages">,
 		"kimi-for-coding-highspeed": {

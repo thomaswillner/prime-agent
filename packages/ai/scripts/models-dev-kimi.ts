@@ -70,7 +70,7 @@ export function getKimiCodingModels(data: ModelsDevCatalog): Model<"anthropic-me
 				cacheRead: model.cost?.cache_read || 0,
 				cacheWrite: model.cost?.cache_write || 0,
 			},
-			contextWindow: model.limit?.context || 4096,
+			contextWindow: normalizedId === "kimi-for-coding" ? 262144 : model.limit?.context || 4096,
 			maxTokens: model.limit?.output || 4096,
 		});
 	}
