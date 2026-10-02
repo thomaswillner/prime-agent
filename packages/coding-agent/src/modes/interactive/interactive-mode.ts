@@ -6393,14 +6393,17 @@ export class InteractiveMode {
 					event.reason === "backup"
 						? () =>
 								`Primary model unavailable (${event.errorMessage}) — retrying on backup model ${event.backupModel ?? "unknown"}... ${cancelHint}`
-						: event.reason === "usage"
-							? (seconds: number) =>
-									`Waiting for provider usage to recover (${event.attempt}/${event.maxAttempts}), next check in ${seconds}s... ${cancelHint}`
-							: event.reason === "unavailable"
+						: event.reason === "selected"
+							? () =>
+									`Model unavailable (${event.errorMessage}) — retrying on selected model ${event.backupModel ?? "unknown"}... ${cancelHint}`
+							: event.reason === "usage"
 								? (seconds: number) =>
-										`Waiting for provider to recover (${event.attempt}/${event.maxAttempts}), next check in ${seconds}s... ${cancelHint}`
-								: (seconds: number) =>
-										`Retrying (${event.attempt}/${event.maxAttempts}) in ${seconds}s... ${cancelHint}`;
+										`Waiting for provider usage to recover (${event.attempt}/${event.maxAttempts}), next check in ${seconds}s... ${cancelHint}`
+								: event.reason === "unavailable"
+									? (seconds: number) =>
+											`Waiting for provider to recover (${event.attempt}/${event.maxAttempts}), next check in ${seconds}s... ${cancelHint}`
+									: (seconds: number) =>
+											`Retrying (${event.attempt}/${event.maxAttempts}) in ${seconds}s... ${cancelHint}`;
 				this.retryLoader = new Loader(
 					this.ui,
 					(spinner) => theme.fg("muted", spinner),

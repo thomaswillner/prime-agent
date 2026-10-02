@@ -443,9 +443,13 @@ export type AgentSessionEvent =
 			maxAttempts: number;
 			delayMs: number;
 			errorMessage: string;
-			/** Why the retry loop re-issues the turn; absent = ordinary quick retry. */
-			reason?: "usage" | "unavailable" | "backup";
-			/** Present when reason is "backup": "provider/model-id" of the backup. */
+			/**
+			 * Why the retry loop re-issues the turn; absent = ordinary quick retry.
+			 * "selected": the session was moved off the failed route mid-turn
+			 * (extension or user) and the turn re-issues there immediately.
+			 */
+			reason?: "usage" | "unavailable" | "backup" | "selected";
+			/** Present when reason is "backup" or "selected": "provider/model-id" the turn re-issues on. */
 			backupModel?: string;
 	  }
 	| {
@@ -13336,15 +13340,29 @@ export class AgentSession {
 
 		const waitClass = providerWaitClass(providerStreamFailureKind(message), providerStreamFailureStatus(message));
 
-		// User-defined backup model (settings.providerBackupModel, default none):
-		// route the failed turn to the backup instead of waiting while the
-		// primary is quota-blocked or its provider is unavailable. The guard
-		// compares against the model serving the run, so a backup equal to a
-		// routed turn's image model is recognized as the duplicate it is instead
-		// of reporting a no-op backup switch with a zero-delay retry.
-		if (waitClass !== "permanent") {
+		// Zero-delay re-routes of the failed turn. Both are attributed to the
+		// route that served the failed request (message.provider/model), never
+		// to the mutable current selection: an extension's after_provider_response
+		// hook may already have moved the session before this runs. Both also
+		// spend the retry budget, so a selector and a backup that point at each
+		// other cannot re-issue the turn unboundedly (measured on 0.9.8: 172
+		// requests in one second with maxRetries=1).
+		if (waitClass !== "permanent" && this._retryAttempt < settings.maxRetries) {
+			const runModel = this._runModel();
+			if (runModel && !this._modelServedMessage(runModel, message)) {
+				// The session was moved off the failed route mid-turn. Re-issue
+				// there now: waiting out the failed route's quota, or hopping to
+				// a backup, would ignore a healthy selection, even one that
+				// happens to equal the configured backup.
+				return this._handleSelectedModelRetry(message, options, runModel);
+			}
+			// User-defined backup model (settings.providerBackupModel, default none):
+			// route the failed turn to the backup instead of waiting while the
+			// primary is quota-blocked or its provider is unavailable. A backup
+			// equal to the failed route (including a routed turn's image model)
+			// is the duplicate it is, never a zero-delay retry of that same route.
 			const backupModel = this._resolveBackupModel();
-			if (backupModel && !modelsAreEqual(this._runModel(), backupModel)) {
+			if (backupModel && !this._modelServedMessage(backupModel, message)) {
 				return this._handleBackupModelRetry(message, options, backupModel);
 			}
 		}
@@ -13515,6 +13533,47 @@ export class AgentSession {
 			return undefined;
 		}
 		return backupModel;
+	}
+
+	/** Whether `model` is the route that served (and failed) `message`. */
+	private _modelServedMessage(model: Model<any> | undefined, message: AssistantMessage): boolean {
+		return model !== undefined && model.provider === message.provider && model.id === message.model;
+	}
+
+	/**
+	 * Re-issue the failed turn immediately on the model the session was moved
+	 * to mid-turn. That selection is deliberate (extension or user), so unlike
+	 * a backup hop nothing is saved for restoration afterwards.
+	 */
+	private _handleSelectedModelRetry(
+		message: AssistantMessage,
+		options:
+			| {
+					markAuthStaleOnFailure?: boolean;
+					authSourceTokens?: readonly AuthSourceToken[];
+			  }
+			| undefined,
+		selectedModel: Model<any>,
+	): Promise<boolean> {
+		// A selection supersedes any earlier backup hop: there is no primary to
+		// restore to once the session was deliberately moved elsewhere.
+		this._backupModel = undefined;
+		this._retryAttempt++;
+		this._providerWait = undefined;
+		return this._retryAfterDelay(
+			message,
+			options,
+			{
+				type: "auto_retry_start",
+				attempt: this._retryAttempt,
+				maxAttempts: this.settingsManager.getRetrySettings().maxRetries,
+				delayMs: 0,
+				errorMessage: message.errorMessage || "Unknown error",
+				reason: "selected",
+				backupModel: `${selectedModel.provider}/${selectedModel.id}`,
+			},
+			0,
+		);
 	}
 
 	/** Route the failed turn to the backup model and retry immediately on it. */
