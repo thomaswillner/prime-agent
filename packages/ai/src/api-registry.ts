@@ -39,6 +39,26 @@ type RegisteredApiProvider = {
 
 const apiProviderRegistry = new Map<string, RegisteredApiProvider>();
 
+export type ModelAdmissionGuard = (model: Model<Api>) => void;
+let modelAdmissionGuard: ModelAdmissionGuard | undefined;
+
+/** Install a synchronous process-wide guard; provider replacement and cleanup retain it. */
+export function setModelAdmissionGuard(guard: ModelAdmissionGuard | undefined): ModelAdmissionGuard | undefined {
+	if (guard !== undefined && typeof guard !== "function") {
+		throw new Error("Model admission guard must be a function");
+	}
+	const previous = modelAdmissionGuard;
+	modelAdmissionGuard = guard;
+	return previous;
+}
+
+function assertModelAdmission(model: Model<Api>): void {
+	const result: unknown = modelAdmissionGuard?.(model);
+	if (result !== undefined) {
+		throw new Error("Model admission guard must be synchronous and return undefined");
+	}
+}
+
 function wrapStream<TApi extends Api, TOptions extends StreamOptions>(
 	api: TApi,
 	stream: StreamFunction<TApi, TOptions>,
@@ -47,6 +67,7 @@ function wrapStream<TApi extends Api, TOptions extends StreamOptions>(
 		if (model.api !== api) {
 			throw new Error(`Mismatched api: ${model.api} expected ${api}`);
 		}
+		assertModelAdmission(model);
 		return stream(model as Model<TApi>, context, options as TOptions);
 	};
 }
@@ -59,6 +80,7 @@ function wrapStreamSimple<TApi extends Api>(
 		if (model.api !== api) {
 			throw new Error(`Mismatched api: ${model.api} expected ${api}`);
 		}
+		assertModelAdmission(model);
 		return streamSimple(model as Model<TApi>, context, options);
 	};
 }
