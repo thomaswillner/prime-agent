@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Fixed `providerBackupModel` retries being attributed to the session's current selection instead of the route that failed. When a failover extension had already moved the session mid-turn, the failed turn either waited out the old route's full Retry-After (120s observed) although a healthy model was selected, or, with a backup equal to the failed primary, re-dispatched that failed route with zero delay without bound (172 requests in one second with `maxRetries=1`). Backup eligibility now compares against the model that served the failed request, a mid-turn selection re-issues the turn immediately (`auto_retry_start.reason: "selected"`), and every zero-delay re-route spends one `retry.maxRetries` attempt.
+
 ## [0.9.8] - 2026-09-29
 
 - Fixed Codex subscription model discovery to claim the current stable Codex CLI release (0.159.0, up from 0.153.4): ChatGPT gates the discovery endpoint on `client_version`, and the stale pin hid GPT-6 Sol and Luna from `rlm` subagent delegation and `find_models()` while the `/model` picker kept offering them ([#2544](https://github.com/PrimeIntellect-ai/prime-agent/discussions/2544)).

@@ -1436,6 +1436,121 @@ describe("AgentSession retry and event characterization", () => {
 		expect(harness.session.model?.id).toBe("faux-1");
 	});
 
+	// A failover extension's after_provider_response hook calls pi.setModel()
+	// before the native retry decision runs. These stand-ins move the session
+	// at message_end of the failed message, the same point in the lifecycle.
+	function moveSessionOnError(harness: Harness, pick: (failures: number) => Model<string>): void {
+		let failures = 0;
+		harness.session.subscribe((event) => {
+			if (event.type !== "message_end" || event.message.role !== "assistant") return;
+			if (event.message.stopReason !== "error") return;
+			failures++;
+			harness.session.agent.state.model = pick(failures);
+		});
+	}
+
+	it("re-issues the failed turn on a model selected mid-turn instead of waiting out the failed route", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-backup" }],
+			settings: {
+				providerBackupModel: "faux/faux-backup",
+				retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
+			},
+		});
+		harnesses.push(harness);
+		// The selector lands on the configured backup. On 0.9.8 the backup guard
+		// compared against the current selection, saw "already on the backup",
+		// and waited out the FAILED route's 120s Retry-After instead.
+		moveSessionOnError(harness, () => harness.getModel("faux-backup")!);
+		harness.setResponses([quotaFailure({ retryAfterMs: 120_000 }), fauxAssistantMessage("recovered on selection")]);
+
+		await harness.session.prompt("test");
+
+		expect(harness.eventsOfType("auto_retry_start")).toEqual([
+			{
+				type: "auto_retry_start",
+				attempt: 1,
+				maxAttempts: 3,
+				delayMs: 0,
+				errorMessage: "429 You have hit your ChatGPT usage limit",
+				reason: "selected",
+				backupModel: "faux/faux-backup",
+			},
+		]);
+		// A deliberate selection is kept: nothing is restored afterwards.
+		expect(harness.eventsOfType("auto_retry_end")).toEqual([{ type: "auto_retry_end", success: true, attempt: 1 }]);
+		expect(harness.faux.state.callCount).toBe(2);
+		expect(harness.session.model?.id).toBe("faux-backup");
+		const lastAssistant = [...harness.session.messages].reverse().find((message) => message.role === "assistant");
+		expect(lastAssistant?.role === "assistant" && lastAssistant.model).toBe("faux-backup");
+		expect(getAssistantTexts(harness)).toContain("recovered on selection");
+	});
+
+	it("never re-dispatches the failed route when the configured backup points back at it", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-2" }],
+			settings: {
+				// Backup equals the primary: on 0.9.8, once a selector moved the
+				// session to faux-2 the backup looked different from the current
+				// selection and the FAILED faux-1 was re-dispatched with zero delay,
+				// over and over (172 requests in one second, maxRetries=1).
+				providerBackupModel: "faux/faux-1",
+				retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 },
+			},
+		});
+		harnesses.push(harness);
+		moveSessionOnError(harness, () => harness.getModel("faux-2")!);
+		harness.setResponses([quotaFailure(), fauxAssistantMessage("recovered")]);
+
+		await harness.session.prompt("test");
+
+		const starts = harness.eventsOfType("auto_retry_start");
+		expect(starts.map((event) => [event.reason, event.backupModel, event.delayMs])).toEqual([
+			["selected", "faux/faux-2", 0],
+		]);
+		expect(starts.some((event) => event.backupModel === "faux/faux-1")).toBe(false);
+		expect(harness.faux.state.callCount).toBe(2);
+		expect(harness.session.model?.id).toBe("faux-2");
+		expect(harness.eventsOfType("auto_retry_end").map((event) => event.success)).toEqual([true]);
+	});
+
+	it("caps zero-delay re-routes at the retry budget", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-2" }, { id: "faux-3" }],
+			settings: {
+				providerBackupModel: "faux/faux-1",
+				retry: {
+					enabled: true,
+					maxRetries: 2,
+					baseDelayMs: 1,
+					provider: { waitForUsage: { enabled: false } },
+				},
+			},
+		});
+		harnesses.push(harness);
+		// A selector that keeps finding "another" model must still run out of budget.
+		moveSessionOnError(harness, (failures) => harness.getModel(failures % 2 === 1 ? "faux-2" : "faux-3")!);
+		harness.setResponses([quotaFailure(), quotaFailure(), quotaFailure(), fauxAssistantMessage("never reached")]);
+
+		await harness.session.prompt("test");
+
+		const starts = harness.eventsOfType("auto_retry_start");
+		expect(starts.map((event) => [event.attempt, event.reason, event.delayMs])).toEqual([
+			[1, "selected", 0],
+			[2, "selected", 0],
+		]);
+		expect(harness.faux.state.callCount).toBe(3);
+		expect(harness.getPendingResponseCount()).toBe(1);
+		expect(harness.eventsOfType("auto_retry_end")).toEqual([
+			{
+				type: "auto_retry_end",
+				success: false,
+				attempt: 2,
+				finalError: "429 You have hit your ChatGPT usage limit",
+			},
+		]);
+	});
+
 	it("does not re-issue a wait retry cancelled between the delay and the scheduled continue", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1" }, { id: "faux-backup" }],

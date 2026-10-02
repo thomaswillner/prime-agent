@@ -607,8 +607,8 @@ export type AgentConnectionSessionEvent =
 			delayMs: number;
 			errorMessage: string;
 			/** Why the retry loop re-issues the turn; absent = ordinary quick retry. */
-			reason?: "usage" | "unavailable" | "backup";
-			/** Present when reason is "backup": "provider/model-id" of the backup. */
+			reason?: "usage" | "unavailable" | "backup" | "selected";
+			/** Present when reason is "backup" or "selected": "provider/model-id" the turn re-issues on. */
 			backupModel?: string;
 	  }
 	| {

@@ -256,6 +256,16 @@ log, and the session returns to the primary model automatically (the next turn
 probes the primary again). If the backup reference cannot be resolved to an
 available, authenticated model, the bounded wait runs instead.
 
+Backup eligibility and re-dispatch are attributed to the route that served the
+failed request, not to the session's current selection. If an extension (for
+example an `after_provider_response` failover hook) or the user already moved
+the session to another model before the retry runs, the failed turn re-issues
+on that selection immediately (status line reason `selected`) rather than
+waiting out the failed route's quota; a backup that equals the failed route is
+never re-dispatched. Every zero-delay re-route spends one `retry.maxRetries`
+attempt, so a selector and a backup that point at each other cannot re-issue
+the turn without bound.
+
 ```json
 {
   "retry": {
