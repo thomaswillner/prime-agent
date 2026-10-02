@@ -13555,6 +13555,9 @@ export class AgentSession {
 			| undefined,
 		selectedModel: Model<any>,
 	): Promise<boolean> {
+		// A selection supersedes any earlier backup hop: there is no primary to
+		// restore to once the session was deliberately moved elsewhere.
+		this._backupModel = undefined;
 		this._retryAttempt++;
 		this._providerWait = undefined;
 		return this._retryAfterDelay(

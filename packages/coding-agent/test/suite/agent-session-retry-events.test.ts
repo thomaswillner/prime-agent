@@ -1551,6 +1551,37 @@ describe("AgentSession retry and event characterization", () => {
 		]);
 	});
 
+	it("keeps a third model selected after the backup also failed, without restoring the primary", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1" }, { id: "faux-backup" }, { id: "faux-3" }],
+			settings: {
+				providerBackupModel: "faux/faux-backup",
+				retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
+			},
+		});
+		harnesses.push(harness);
+		// First failure: no selection change, so the native backup hop runs.
+		// Second failure (on the backup): the selector moves to a third model.
+		moveSessionOnError(harness, (failures) =>
+			failures === 1 ? harness.session.model! : harness.getModel("faux-3")!,
+		);
+		harness.setResponses([quotaFailure(), quotaFailure(), fauxAssistantMessage("recovered on third")]);
+
+		await harness.session.prompt("test");
+
+		expect(
+			harness.eventsOfType("auto_retry_start").map((event) => [event.attempt, event.reason, event.backupModel]),
+		).toEqual([
+			[1, "backup", "faux/faux-backup"],
+			[2, "selected", "faux/faux-3"],
+		]);
+		// The selection supersedes the backup hop: no restoredModel, final model is the third.
+		expect(harness.eventsOfType("auto_retry_end")).toEqual([{ type: "auto_retry_end", success: true, attempt: 2 }]);
+		expect(harness.faux.state.callCount).toBe(3);
+		expect(harness.session.model?.id).toBe("faux-3");
+		expect(getAssistantTexts(harness)).toContain("recovered on third");
+	});
+
 	it("does not re-issue a wait retry cancelled between the delay and the scheduled continue", async () => {
 		const harness = await createHarness({
 			models: [{ id: "faux-1" }, { id: "faux-backup" }],
