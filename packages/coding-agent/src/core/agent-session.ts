@@ -10124,9 +10124,28 @@ export class AgentSession {
 		return typeof kind === "string" ? kind : undefined;
 	}
 
+	private _getProviderStreamFailureStatus(message: AssistantMessage): number | undefined {
+		const status = this._getProviderStreamFailureDetails(message)?.status;
+		if (typeof status === "number") return status;
+		if (typeof status !== "string") return undefined;
+		const parsed = Number(status);
+		return Number.isInteger(parsed) ? parsed : undefined;
+	}
+
+	private _getProviderStreamFailureErrorType(message: AssistantMessage): string | undefined {
+		const providerErrorType = this._getProviderStreamFailureDetails(message)?.providerErrorType;
+		return typeof providerErrorType === "string" ? providerErrorType : undefined;
+	}
+
 	private _isStructuredPermanentProviderFailure(message: AssistantMessage): boolean {
 		const kind = this._getProviderStreamFailureKind(message);
-		return kind === "auth" || kind === "invalid_request" || kind === "refusal";
+		return (
+			kind === "auth" ||
+			kind === "invalid_request" ||
+			kind === "permission" ||
+			kind === "refusal" ||
+			kind === "safety"
+		);
 	}
 
 	private _isStructuredPermanentProviderRetryExhausted(message: AssistantMessage): boolean {
@@ -10252,19 +10271,55 @@ export class AgentSession {
 		return model ? `${model.provider}/${model.id}` : "unknown";
 	}
 
+	private _httpStatusFromMessage(errorMessage: string): number | undefined {
+		const match = errorMessage.match(
+			/^\s*(\d{3})\b|\b(?:http(?:\s+status)?|status(?:\s+code)?|response\s+status|error)\s*[:=]?\s*(\d{3})\b/i,
+		);
+		const status = Number(match?.[1] ?? match?.[2]);
+		return Number.isInteger(status) && status >= 400 && status <= 599 ? status : undefined;
+	}
+
+	private _failureClassFromMessage(errorMessage: string): string {
+		const status = this._httpStatusFromMessage(errorMessage);
+		if (status === 429) return "rate_limit";
+		if (status !== undefined && status >= 500) return "server_error";
+		if (status !== undefined) return "error";
+		if (/rate.?limit|too many requests/i.test(errorMessage)) return "rate_limit";
+		if (/overloaded|service unavailable|internal server/i.test(errorMessage)) return "server_error";
+		if (
+			/timeout|timed out|network|connection|fetch failed|\bterminated\b|other side closed|socket hang up|ECONN(?:RESET|REFUSED)|upstream connect error|reset before headers/i.test(
+				errorMessage,
+			)
+		) {
+			return "network";
+		}
+		if (/cooldown/i.test(errorMessage)) return "cooldown";
+		return "error";
+	}
+
 	/**
 	 * Classify why a model was retired, for the chain-exhaustion report.
-	 * Structured provider diagnostics win over error-message sniffing.
+	 * Structured permanent failures win. Structured unknown failures can still
+	 * be positively identified as transport failures from their original text.
 	 */
 	private _failureClass(message: AssistantMessage): string {
 		const kind = this._getProviderStreamFailureKind(message);
-		if (kind) return kind;
+		if (this._isStructuredPermanentProviderFailure(message)) return kind ?? "error";
+
+		const status = this._getProviderStreamFailureStatus(message);
+		if (status !== undefined) {
+			if (status === 429) return "rate_limit";
+			if (status >= 500 && status <= 599) return "server_error";
+			if (status >= 400 && status <= 499) return kind === "unknown" ? kind : "error";
+		}
+		if (kind && kind !== "unknown") return kind;
+
 		const errorMessage = message.errorMessage ?? "";
-		if (/\b429\b|rate.?limit|too many requests/i.test(errorMessage)) return "rate_limit";
-		if (/\b5\d{2}\b|overloaded|unavailable|internal server/i.test(errorMessage)) return "server_error";
-		if (/timeout|timed out|network|connection/i.test(errorMessage)) return "network";
-		if (/cooldown/i.test(errorMessage)) return "cooldown";
-		return "error";
+		const failureClass = this._failureClassFromMessage(errorMessage);
+		if (failureClass !== "error" || this._httpStatusFromMessage(errorMessage) !== undefined) {
+			return failureClass;
+		}
+		return this._failureClassFromMessage(this._getProviderStreamFailureErrorType(message) ?? "");
 	}
 
 	/**
@@ -10278,7 +10333,9 @@ export class AgentSession {
 		if (this._isConcreteProviderAuthFailure(message)) return false;
 		if (this._isAgentLifecycleFailure(message)) return false;
 		if (this._isFauxProviderQueueExhausted(message)) return false;
-		return true;
+
+		const failureClass = this._failureClass(message);
+		return ["overloaded", "rate_limit", "server_error", "network", "cooldown"].includes(failureClass);
 	}
 
 	/** Human-readable terminal report naming every model tried and its failure class. */
@@ -10296,29 +10353,33 @@ export class AgentSession {
 	 * Budget counters are session-scoped and deliberately untouched here.
 	 */
 	private async _failoverToNextModel(message: AssistantMessage): Promise<boolean> {
-		const next = this._fallbackModels[this._fallbackIndex];
-		if (!next) return false;
-
 		const from = this._modelSelector(this.model);
-		const to = this._modelSelector(next);
 		const failureClass = this._failureClass(message);
 		const reason = message.errorMessage ?? failureClass;
 
-		try {
-			await this.setModel(next, { waitForExtensions: false, persistDefault: false });
-		} catch {
-			// An unusable chain entry must not strand the session: retire it and
-			// let the next _handleRetryableError call try the following entry.
+		while (this._fallbackIndex < this._fallbackModels.length) {
+			const next = this._fallbackModels[this._fallbackIndex];
+			if (!next) return false;
+			const to = this._modelSelector(next);
+
+			try {
+				await this.setModel(next, { waitForExtensions: false, persistDefault: false });
+			} catch {
+				// Unusable entries do not consume a provider retry. Retire each one
+				// and keep walking this chain before declaring terminal failure.
+				this._fallbackIndex++;
+				this._fallbackFailures.push({ model: to, failureClass: "unavailable" });
+				continue;
+			}
+
 			this._fallbackIndex++;
-			this._fallbackFailures.push({ model: to, failureClass: "unavailable" });
-			return false;
+			this._fallbackFailures.push({ model: from, failureClass });
+			this.sessionManager.appendModelSwitch(from, to, reason, this._fallbackIndex);
+			this._emit({ type: "model_switch", from, to, reason, attempt: this._fallbackIndex });
+			return true;
 		}
 
-		this._fallbackIndex++;
-		this._fallbackFailures.push({ model: from, failureClass });
-		this.sessionManager.appendModelSwitch(from, to, reason, this._fallbackIndex);
-		this._emit({ type: "model_switch", from, to, reason, attempt: this._fallbackIndex });
-		return true;
+		return false;
 	}
 
 	private _finishActiveRetryWithFailure(message: AssistantMessage): void {

@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, StreamFailureInfo } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, recordStreamFailure } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelSwitchEntry } from "../../src/core/session-manager.js";
 import { createHarness, getAssistantTexts, type Harness } from "./harness.js";
@@ -10,20 +10,32 @@ function transientError(errorMessage = "overloaded_error"): AssistantMessage {
 	return fauxAssistantMessage("", { stopReason: "error", errorMessage });
 }
 
-function structuredFailure(kind: "auth" | "invalid_request", status?: number): AssistantMessage {
+function structuredFailure(
+	kind: StreamFailureInfo["kind"] | "permission",
+	status?: number,
+	errorMessage = `provider ${kind} failure`,
+	providerErrorType?: string,
+): AssistantMessage {
 	return {
-		...fauxAssistantMessage("", {
-			stopReason: "error",
-			errorMessage: `provider ${kind} failure`,
-		}),
+		...fauxAssistantMessage("", { stopReason: "error", errorMessage }),
 		diagnostics: [
 			{
 				type: "provider_stream_failure",
 				timestamp: Date.now(),
-				details: status === undefined ? { kind } : { kind, status },
+				details: {
+					kind,
+					...(status === undefined ? {} : { status }),
+					...(providerErrorType === undefined ? {} : { providerErrorType }),
+				},
 			},
 		],
 	};
+}
+
+function recordedFailure(error: Error): AssistantMessage {
+	const message = transientError(error.message);
+	recordStreamFailure({ provider: "faux", id: "faux-1", api: "faux" }, message, error);
+	return message;
 }
 
 function modelSwitches(harness: Harness): ModelSwitchEntry[] {
@@ -56,6 +68,51 @@ describe("native model failover (fallbackModels)", () => {
 		expect(harness.session.model?.id).toBe("faux-2");
 		expect(harness.faux.state.callCount).toBe(4);
 		expect(getAssistantTexts(harness)).toContain("recovered");
+	});
+
+	it("skips an unavailable fallback and recovers on the next usable model", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		const unavailable = { ...harness.getModel("faux-2")!, provider: "missing-auth" };
+		harness.session.setFallbackModels([unavailable, harness.getModel("faux-3")!]);
+
+		harness.setResponses([
+			transientError("429 rate limit"),
+			transientError("429 rate limit"),
+			fauxAssistantMessage("recovered"),
+		]);
+
+		await harness.session.prompt("test");
+
+		expect(harness.session.model?.id).toBe("faux-3");
+		expect(harness.faux.state.callCount).toBe(3);
+		expect(getAssistantTexts(harness)).toContain("recovered");
+		expect(modelSwitches(harness).map((entry) => entry.to)).toEqual(["faux/faux-3"]);
+	});
+
+	it("reports every unavailable fallback when the chain cannot be used", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		const unavailableTwo = { ...harness.getModel("faux-2")!, provider: "missing-auth-2" };
+		const unavailableThree = { ...harness.getModel("faux-3")!, provider: "missing-auth-3" };
+		harness.session.setFallbackModels([unavailableTwo, unavailableThree]);
+
+		harness.setResponses([transientError("429 rate limit"), transientError("429 rate limit")]);
+
+		await harness.session.prompt("test");
+
+		const ends = harness.eventsOfType("auto_retry_end");
+		const finalError = ends[ends.length - 1]?.finalError ?? "";
+		expect(finalError).toContain("faux/faux-1 (rate_limit)");
+		expect(finalError).toContain("missing-auth-2/faux-2 (unavailable)");
+		expect(finalError).toContain("missing-auth-3/faux-3 (unavailable)");
+		expect(modelSwitches(harness)).toEqual([]);
 	});
 
 	it("continues the same conversation across the switch", async () => {
@@ -145,6 +202,141 @@ describe("native model failover (fallbackModels)", () => {
 		expect(getAssistantTexts(harness)).toContain("third model works");
 	});
 
+	it.each([
+		["fetch failed", () => transientError("fetch failed")],
+		["terminated connection", () => transientError("terminated")],
+		["other side closed", () => transientError("other side closed")],
+		["socket hang up", () => transientError("socket hang up")],
+		["ECONNREFUSED", () => transientError("connect ECONNREFUSED 127.0.0.1:443")],
+		["upstream reset", () => transientError("upstream connect error or disconnect/reset before headers")],
+		[
+			"structured unknown ECONNRESET",
+			() => recordedFailure(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" })),
+		],
+		["structured unknown TypeError", () => recordedFailure(new TypeError("fetch failed"))],
+		["raw HTTP 429", () => transientError("HTTP status 429: Too Many Requests")],
+		["raw HTTP 503", () => transientError("response status 503: upstream reset")],
+		["raw cooldown", () => transientError("provider cooldown active")],
+		["structured rate limit", () => structuredFailure("rate_limit", 429)],
+		["structured server error", () => structuredFailure("server_error", 503)],
+	] as const)("fails over for %s", async (_name, makeFailure) => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		harness.setResponses([makeFailure(), makeFailure(), fauxAssistantMessage("recovered")]);
+
+		await harness.session.prompt("test");
+
+		expect(harness.session.model?.id).toBe("faux-2");
+		expect(getAssistantTexts(harness)).toContain("recovered");
+		expect(modelSwitches(harness)).toHaveLength(1);
+	});
+
+	it.each([
+		["raw unterminated tool argument", () => transientError("unterminated tool argument")],
+		[
+			"structured unknown unterminated tool argument",
+			() => structuredFailure("unknown", undefined, "unterminated tool argument"),
+		],
+	] as const)("does not fail over for %s", async (_name, makeFailure) => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		harness.setResponses([makeFailure(), makeFailure()]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
+	it.each([
+		["payload max_tokens 512", "400 invalid_request: max_tokens 512 is invalid"],
+		["payload 429", "400 invalid_request: field value 429 is invalid"],
+		["transient words", "400 invalid_request: connection timeout while validating unavailable network input"],
+	] as const)("does not fail over for an unstructured permanent 400 with %s", async (_name, errorMessage) => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		harness.setResponses([transientError(errorMessage), transientError(errorMessage)]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
+	it.each([
+		["invalid_request", 400],
+		["invalid_request", undefined],
+		["auth", 401],
+		["refusal", undefined],
+		["safety", 503],
+		["permission", 503],
+		["unknown", 400],
+	] as const)("structured permanent %s wins over transient wording", async (kind, status) => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		const failure = () => structuredFailure(kind, status, "connection timeout ECONNRESET 503 rate limit");
+		harness.setResponses([failure(), failure()]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
+	it("a leading raw 400 wins over structured transport metadata", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		const failure = () =>
+			structuredFailure(
+				"unknown",
+				undefined,
+				"400 invalid_request: connection timeout while validating input",
+				"ECONNRESET",
+			);
+		harness.setResponses([failure(), failure()]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
+	it("does not fail over for an unknown non-transport failure", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+		const failure = () => structuredFailure("unknown", undefined, "invalid semantic response");
+		harness.setResponses([failure(), failure()]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
 	it("does not switch on a 401 auth failure", async () => {
 		const harness = await createHarness({
 			models: FALLBACK_MODELS,
@@ -183,6 +375,27 @@ describe("native model failover (fallbackModels)", () => {
 
 		expect(modelSwitches(harness)).toEqual([]);
 		expect(harness.session.model?.id).toBe("faux-1");
+	});
+
+	it("does not switch on an unstructured 400 invalid_request failure", async () => {
+		const harness = await createHarness({
+			models: FALLBACK_MODELS,
+			settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } },
+		});
+		harnesses.push(harness);
+		harness.session.setFallbackModels([harness.getModel("faux-2")!]);
+
+		harness.setResponses([
+			transientError("400 invalid_request: malformed tool input"),
+			transientError("400 invalid_request: malformed tool input"),
+			fauxAssistantMessage("must not reach fallback"),
+		]);
+
+		await harness.session.prompt("test");
+
+		expect(modelSwitches(harness)).toEqual([]);
+		expect(harness.session.model?.id).toBe("faux-1");
+		expect(harness.faux.state.callCount).toBe(2);
 	});
 
 	it("keeps current behavior when no fallback chain is configured", async () => {
