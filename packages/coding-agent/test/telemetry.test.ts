@@ -526,3 +526,66 @@ describe("agent telemetry aggregation", () => {
 		expect(disposed).toBe(true);
 	});
 });
+
+describe("run error categorization", () => {
+	// errorCategory is private, so drive it through the run event it feeds. Each case
+	// asserts a specific category rather than "not the wrong one", so stubbing the
+	// classifier to any single value turns this block red.
+	function categoryFor(errorMessage: string): unknown {
+		vi.stubEnv("PRIME_AGENT_TELEMETRY", "1");
+		const sink = new FakeTelemetrySink();
+		const fakeSession = new FakeAgentSession();
+		installAgentTelemetry(fakeSession as unknown as AgentSession, {
+			agentDir: "/not-used",
+			settingsManager: SettingsManager.inMemory(),
+			sink,
+		});
+
+		const assistant = assistantMessage({ stopReason: "error", errorMessage });
+		fakeSession.emit({
+			type: "session_action_update",
+			actions: { queuedCount: 0, steering: [], followUps: [], active: { kind: "turn", phase: "running" } },
+		});
+		fakeSession.emit({ type: "agent_start" });
+		fakeSession.emit({ type: "message_end", message: assistant });
+		fakeSession.emit({ type: "agent_end", messages: [assistant] });
+		fakeSession.emit({ type: "session_action_update", actions: { queuedCount: 0, steering: [], followUps: [] } });
+
+		return sink.events.find((event) => event.name === "agent run completed")?.properties.error_category;
+	}
+
+	it("files a plain context overflow as context_limit", () => {
+		expect(categoryFor("prompt is too long: 213462 tokens > 200000 maximum")).toBe("context_limit");
+	});
+
+	it("files an overflow carrying quota metadata as context_limit, not rate_limit", () => {
+		// The rate_limit branch matches "rate limit" anywhere in the prose, so without the
+		// overflow detector running first this is filed as rate_limit and the dashboards
+		// corroborate the wrong cause.
+		expect(categoryFor("prompt is too long: 213462 tokens > 200000 maximum (rate limit: 100/min)")).toBe(
+			"context_limit",
+		);
+		expect(categoryFor("This endpoint's maximum context length is 131072 tokens; quota 200/min")).toBe(
+			"context_limit",
+		);
+	});
+
+	it("still files a genuine rate limit as rate_limit", () => {
+		expect(categoryFor("Rate limit exceeded, please retry after 30 seconds.")).toBe("rate_limit");
+		expect(categoryFor("429 Too many requests. Please slow down.")).toBe("rate_limit");
+	});
+
+	it("files Bedrock throttling as rate_limit even though it names tokens", () => {
+		// "Too many tokens" is Bedrock's HTTP 429 wording. The overflow detector excludes
+		// it, and the prose ladder now recognizes "Throttling" instead of falling to other.
+		expect(categoryFor("Throttling error: Too many tokens, please wait before trying again.")).toBe("rate_limit");
+	});
+
+	it("leaves the remaining categories reachable", () => {
+		expect(categoryFor("401 unauthorized: invalid x-api-key")).toBe("authentication");
+		expect(categoryFor("Request timed out after 60s")).toBe("timeout");
+		expect(categoryFor("fetch failed")).toBe("network");
+		expect(categoryFor("529 Provider overloaded")).toBe("provider_unavailable");
+		expect(categoryFor("something nobody classified")).toBe("other");
+	});
+});

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Fixed context overflow being discarded as throttling when the provider error also mentioned a rate limit or quota.
+- Fixed a classified stream failure replacing the provider's own error text when that text was the only evidence, which hid overflow errors from overflow detection.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05

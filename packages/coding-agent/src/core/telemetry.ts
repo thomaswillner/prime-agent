@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSy
 import { arch, platform } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import { isContextOverflow } from "@earendil-works/pi-ai";
 import { detectInstallMethod, VERSION } from "../config.js";
 import type { AgentSession, AgentSessionEvent } from "./agent-session.js";
 import type { AgentExecutionMode } from "./agent-session-config.js";
@@ -550,11 +551,19 @@ function errorCategory(message: AssistantMessage | undefined): string | null {
 	if (!message || message.stopReason !== "error") {
 		return null;
 	}
+	// Overflow has a dedicated detector that knows the provider dialects and the
+	// throttling exclusions. Consult it before the prose ladder below, whose rate_limit
+	// branch matches "quota" and "rate limit" anywhere and would otherwise claim an
+	// overflow error that merely carries quota metadata. No contextWindow is needed:
+	// only the error-text case applies to stopReason "error".
+	if (isContextOverflow(message)) {
+		return "context_limit";
+	}
 	const error = message.errorMessage?.toLowerCase() ?? "";
 	if (/\b401\b|\b403\b|auth|api.?key|credential|unauthori[sz]ed|forbidden/.test(error)) {
 		return "authentication";
 	}
-	if (/\b429\b|rate.?limit|quota/.test(error)) {
+	if (/\b429\b|rate.?limit|quota|throttl/.test(error)) {
 		return "rate_limit";
 	}
 	if (/timeout|timed out/.test(error)) {
