@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fixed the package failing to build whenever a provider's upstream source returned no models, because the model catalog was indexed by a provider union wider than the generated catalog's keys.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05
