@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Fixed the shared test model resolvers throwing during test collection when the catalog listed no model for a provider, which failed whole test files instead of skipping the suites that need one.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05

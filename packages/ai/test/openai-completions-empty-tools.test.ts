@@ -103,7 +103,7 @@ describe("openai-completions empty tools handling", () => {
 		async () => {
 			process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
 			process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
-			const model = cloudflareGatewayWorkersAi;
+			const model = cloudflareGatewayWorkersAi!;
 
 			await streamSimple(
 				model,
@@ -191,7 +191,7 @@ describe("openai-completions empty tools handling", () => {
 		async () => {
 			process.env.CLOUDFLARE_ACCOUNT_ID = "account-id";
 			process.env.CLOUDFLARE_GATEWAY_ID = "gateway-id";
-			const workersModel = cloudflareGatewayWorkersAi;
+			const workersModel = cloudflareGatewayWorkersAi!;
 
 			await streamSimple(
 				workersModel,

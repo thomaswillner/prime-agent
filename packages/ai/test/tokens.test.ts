@@ -172,7 +172,7 @@ describe("Token Statistics on Abort", () => {
 	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
 		"Cloudflare AI Gateway Provider",
 		() => {
-			const llm = cloudflareGatewayWorkersAi;
+			const llm = cloudflareGatewayWorkersAi!;
 
 			it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
 				await testTokensOnAbort(llm);
@@ -188,8 +188,9 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider", () => {
-		const llm = getZaiTestModel();
+	const zaiModel = getZaiTestModel();
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiModel)("zAI Provider", () => {
+		const llm = zaiModel!;
 
 		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
 			await testTokensOnAbort(llm);
@@ -212,8 +213,9 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider", () => {
-		const llm = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding Provider", () => {
+		const llm = kimiCodingModel!;
 
 		it("should include token stats when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
 			await testTokensOnAbort(llm);
