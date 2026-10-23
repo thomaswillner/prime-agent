@@ -110,11 +110,35 @@ export function streamFailureFromStopReason(
 
 const MAX_RAW_LENGTH = 2000;
 
+/**
+ * A provider's own error sentence is short; anything much longer is a payload (JSON
+ * envelope, HTML error page, trace). Preserved evidence is capped well below
+ * MAX_RAW_LENGTH, which is the post-mortem budget for logs, so a user-facing message
+ * can carry the provider's sentence without becoming the payload.
+ *
+ * Head and tail are both kept, because a gateway that prepends routing metadata pushes
+ * the provider's own sentence to the end and a head-only excerpt would drop it. This
+ * bounds the loss rather than removing it: a marker in the middle of a very long body
+ * is still cut. No truncation policy closes that gap; carrying the classification
+ * structurally instead of as prose is what would.
+ */
+const PRESERVED_DETAIL_SEGMENT = 200;
+
 export function truncateRawPayload(raw: string): string {
 	return raw.length > MAX_RAW_LENGTH ? `${raw.slice(0, MAX_RAW_LENGTH)}…` : raw;
 }
 
-function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; detail?: string } {
+function truncatePreservedDetail(raw: string): string {
+	if (raw.length <= PRESERVED_DETAIL_SEGMENT * 2) return raw;
+	return `${raw.slice(0, PRESERVED_DETAIL_SEGMENT)}…${raw.slice(-PRESERVED_DETAIL_SEGMENT)}`;
+}
+
+interface StreamFailureParts {
+	info: StreamFailureInfo;
+	detail?: string;
+}
+
+function extractStreamFailureParts(error: unknown): StreamFailureParts {
 	if (error instanceof StreamFailureError) return { info: error.info };
 	if (!(error instanceof Error)) return { info: { kind: "unknown" } };
 
@@ -160,6 +184,7 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 	const rawRequestId = err.requestID ?? err.request_id ?? err.$metadata?.requestId ?? headerRequestId;
 	const requestId = typeof rawRequestId === "string" ? rawRequestId : undefined;
 
+	const detail = typeof bodyMessage === "string" ? bodyMessage : undefined;
 	return {
 		info: {
 			kind: classifyStreamFailure(providerErrorType ?? error.message, status),
@@ -167,7 +192,7 @@ function extractStreamFailureParts(error: unknown): { info: StreamFailureInfo; d
 			status,
 			requestId,
 		},
-		detail: typeof bodyMessage === "string" ? bodyMessage : undefined,
+		detail,
 	};
 }
 
@@ -182,9 +207,22 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
 
 /**
  * User-facing message for a thrown stream error: a classified one-liner with
- * the provider's own short message, never the raw payload/trace. Unrecognized
+ * the provider's own short message, never a full payload or trace. Unrecognized
  * errors pass through verbatim so their text (which downstream retry matching
  * may depend on) is preserved.
+ *
+ * When the provider gave no structured body message, `error.message` is kept as the
+ * detail, capped at PRESERVED_DETAIL_SEGMENT per end, rather than replaced by the canned
+ * kind string. Replacing it destroys the evidence downstream matchers read: a message
+ * like "prompt is too long: ...; server overloaded" classifies as `overloaded` off one
+ * incidental word, and collapsing it to "Provider overloaded" hides the overflow from
+ * isContextOverflow(), which then lets the caller retry the same oversized request
+ * instead of compacting.
+ *
+ * Only the absence of `detail` gates this. A status or a provider error type fixes the
+ * kind but carries no overflow evidence of its own, so gating on either would discard
+ * the message for a gateway returning a real overflow under an HTTP 429, or for a named
+ * SDK error like Google's `ApiError` whose own message is the only evidence there is.
  */
 export function formatStreamFailureMessage(error: unknown): string {
 	if (error instanceof StreamFailureError) return error.message;
@@ -192,7 +230,8 @@ export function formatStreamFailureMessage(error: unknown): string {
 	if (info.kind === "unknown") {
 		return error instanceof Error ? error.message : JSON.stringify(error);
 	}
-	return streamFailureMessage(info, detail);
+	const preserved = detail ?? (error instanceof Error ? truncatePreservedDetail(error.message) : undefined);
+	return streamFailureMessage(info, preserved);
 }
 
 const log = getLogger("ai.provider");

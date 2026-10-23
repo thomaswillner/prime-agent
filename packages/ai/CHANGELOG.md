@@ -5,6 +5,8 @@
 - Changed `npm run build` to type-check the committed model catalog instead of regenerating it from the provider APIs first, so a build of a given commit is reproducible; refresh the catalog deliberately with `npm run generate-models` and commit the result.
 - Fixed the shared test model resolvers throwing during test collection when the catalog listed no model for a provider, which failed whole test files instead of skipping the suites that need one.
 - Fixed the package failing to build whenever a provider's upstream source returned no models, because the model catalog was indexed by a provider union wider than the generated catalog's keys.
+- Fixed context overflow being discarded as throttling when the provider error also mentioned a rate limit or quota.
+- Fixed a classified stream failure replacing the provider's own error text when that text was the only evidence, which hid overflow errors from overflow detection.
 
 ## [0.7.1] - 2026-08-07
 
