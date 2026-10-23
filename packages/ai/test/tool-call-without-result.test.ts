@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getModel } from "../src/models.js";
 import { complete } from "../src/stream.js";
 import type { Api, Context, Model, StreamOptions, Tool } from "../src/types.js";
-import { getKimiCodingTestModel } from "./kimi-test-model.js";
+import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -177,13 +177,23 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials())("Cloudflare AI Gateway Provider", () => {
-		const model = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+	// models.dev drops Workers AI ids between catalog revisions, so resolve instead of pin.
+	const cloudflareGatewayWorkersAi = getCloudflareGatewayWorkersAiTestModel();
 
-		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			await testToolCallWithoutResult(model);
-		});
-	});
+	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
+		"Cloudflare AI Gateway Provider",
+		() => {
+			const model = cloudflareGatewayWorkersAi!;
+
+			it(
+				"should filter out tool calls without corresponding tool results",
+				{ retry: 3, timeout: 30000 },
+				async () => {
+					await testToolCallWithoutResult(model);
+				},
+			);
+		},
+	);
 
 	describe.skipIf(!process.env.HF_TOKEN)("Hugging Face Provider", () => {
 		const model = getModel("huggingface", "moonshotai/Kimi-K2.5");
@@ -193,8 +203,9 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider", () => {
-		const model = getZaiTestModel({ toolStream: true });
+	const zaiToolStreamModel = getZaiTestModel({ toolStream: true });
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiToolStreamModel)("zAI Provider", () => {
+		const model = zaiToolStreamModel!;
 
 		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testToolCallWithoutResult(model);
@@ -249,8 +260,9 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider", () => {
-		const model = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding Provider", () => {
+		const model = kimiCodingModel!;
 
 		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testToolCallWithoutResult(model);

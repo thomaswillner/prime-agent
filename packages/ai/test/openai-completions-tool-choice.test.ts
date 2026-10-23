@@ -64,6 +64,11 @@ vi.mock("openai", () => {
 	return { default: FakeOpenAI };
 });
 
+// Resolved once at module scope: the helpers return undefined when the catalog lists
+// no z.ai model, and only the six z.ai tests below depend on one.
+const zaiModel = getZaiTestModel();
+const zaiToolStreamModel = getZaiTestModel({ toolStream: true });
+
 describe("openai-completions tool_choice", () => {
 	beforeEach(() => {
 		mockState.lastParams = undefined;
@@ -184,8 +189,8 @@ describe("openai-completions tool_choice", () => {
 		expect(params.reasoning_effort).toBe("medium");
 	});
 
-	it("enables tool_stream for supported z.ai models with tools", async () => {
-		const model = getZaiTestModel({ toolStream: true });
+	it.skipIf(!zaiToolStreamModel)("enables tool_stream for supported z.ai models with tools", async () => {
+		const model = zaiToolStreamModel!;
 		const tools: Tool[] = [
 			{
 				name: "ping",
@@ -221,12 +226,12 @@ describe("openai-completions tool_choice", () => {
 		expect(params.tool_stream).toBe(true);
 	});
 
-	it("stores z.ai tool_stream support in model compat metadata", () => {
-		expect(getZaiTestModel({ toolStream: true }).compat?.zaiToolStream).toBe(true);
+	it.skipIf(!zaiToolStreamModel)("stores z.ai tool_stream support in model compat metadata", () => {
+		expect(zaiToolStreamModel!.compat?.zaiToolStream).toBe(true);
 	});
 
-	it("omits tool_stream when model compat disables it", async () => {
-		const baseModel = getZaiTestModel();
+	it.skipIf(!zaiModel)("omits tool_stream when model compat disables it", async () => {
+		const baseModel = zaiModel!;
 		const model = {
 			...baseModel,
 			compat: {
@@ -269,8 +274,8 @@ describe("openai-completions tool_choice", () => {
 		expect(params.tool_stream).toBeUndefined();
 	});
 
-	it("respects explicit z.ai tool_stream compat override", async () => {
-		const baseModel = getZaiTestModel();
+	it.skipIf(!zaiModel)("respects explicit z.ai tool_stream compat override", async () => {
+		const baseModel = zaiModel!;
 		const model = {
 			...baseModel,
 			compat: {
@@ -313,8 +318,8 @@ describe("openai-completions tool_choice", () => {
 		expect(params.tool_stream).toBe(true);
 	});
 
-	it("omits tool_stream when no tools are provided", async () => {
-		const model = getZaiTestModel({ toolStream: true });
+	it.skipIf(!zaiToolStreamModel)("omits tool_stream when no tools are provided", async () => {
+		const model = zaiToolStreamModel!;
 		let payload: unknown;
 
 		await streamSimple(
@@ -340,7 +345,7 @@ describe("openai-completions tool_choice", () => {
 		expect(params.tool_stream).toBeUndefined();
 	});
 
-	it("maps non-standard provider finish_reason values to stopReason error", async () => {
+	it.skipIf(!zaiToolStreamModel)("maps non-standard provider finish_reason values to stopReason error", async () => {
 		mockState.chunks = [
 			{
 				choices: [{ delta: { content: "partial" }, finish_reason: null }],
@@ -356,7 +361,7 @@ describe("openai-completions tool_choice", () => {
 			},
 		];
 
-		const model = getZaiTestModel({ toolStream: true });
+		const model = zaiToolStreamModel!;
 		const response = await streamSimple(
 			model,
 			{

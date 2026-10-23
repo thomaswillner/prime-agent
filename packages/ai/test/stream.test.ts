@@ -5,10 +5,10 @@ import { Type } from "typebox";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getEnvApiKey } from "../src/env-api-keys.js";
-import { getModel } from "../src/models.js";
+import { getModel, getModels } from "../src/models.js";
 import { complete, stream } from "../src/stream.js";
 import type { Api, Context, ImageContent, Model, StreamOptions, Tool, ToolResultMessage } from "../src/types.js";
-import { getKimiCodingTestModel } from "./kimi-test-model.js";
+import { getCloudflareGatewayWorkersAiTestModel, getKimiCodingTestModel } from "./kimi-test-model.js";
 import { getZaiTestModel } from "./zai-test-model.js";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -666,10 +666,14 @@ describe("Generate E2E Tests", () => {
 		},
 	);
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials())(
-		"Cloudflare AI Gateway → Workers AI (Kimi K2.6 via /compat)",
+	// models.dev also drops Workers AI ids between catalog revisions
+	// (workers-ai/@cf/moonshotai/kimi-k2.6 vanished), so resolve instead of pin.
+	const cloudflareGatewayWorkersAi = getCloudflareGatewayWorkersAiTestModel();
+
+	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
+		"Cloudflare AI Gateway → Workers AI (via /compat)",
 		() => {
-			const llm = getModel("cloudflare-ai-gateway", "workers-ai/@cf/moonshotai/kimi-k2.6");
+			const llm = cloudflareGatewayWorkersAi!;
 
 			it("should complete basic text generation", { retry: 3 }, async () => {
 				await basicTextGeneration(llm);
@@ -726,38 +730,43 @@ describe("Generate E2E Tests", () => {
 		},
 	);
 
-	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !process.env.ANTHROPIC_API_KEY)(
-		"Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4-5 via /anthropic messages)",
-		() => {
-			const llm = getModel("cloudflare-ai-gateway", "claude-sonnet-4-5");
-			const options = { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}` } };
-			const thinkingOptions = {
-				...options,
-				thinkingEnabled: true,
-				reasoningEffort: "high",
-			} satisfies StreamOptionsWithExtras;
+	// models.dev renames these ids between catalog revisions (claude-sonnet-4-5 → claude-sonnet-4.5),
+	// so resolve the newest sonnet at runtime rather than pinning an id the next rename invalidates.
+	const cloudflareAnthropicSonnet = getModels("cloudflare-ai-gateway")
+		.filter((m) => m.api === "anthropic-messages" && m.id.startsWith("claude-sonnet-4"))
+		.sort((a, b) => b.id.localeCompare(a.id))[0];
 
-			it("should complete basic text generation", { retry: 3 }, async () => {
-				await basicTextGeneration(llm, options);
-			});
+	describe.skipIf(
+		!hasCloudflareAiGatewayCredentials() || !process.env.ANTHROPIC_API_KEY || !cloudflareAnthropicSonnet,
+	)("Cloudflare AI Gateway → Anthropic BYOK (claude-sonnet-4.x via /anthropic messages)", () => {
+		const llm = cloudflareAnthropicSonnet;
+		const options = { headers: { Authorization: `Bearer ${process.env.ANTHROPIC_API_KEY}` } };
+		const thinkingOptions = {
+			...options,
+			thinkingEnabled: true,
+			reasoningEffort: "high",
+		} satisfies StreamOptionsWithExtras;
 
-			it("should handle tool calling", { retry: 3 }, async () => {
-				await handleToolCall(llm, options);
-			});
+		it("should complete basic text generation", { retry: 3 }, async () => {
+			await basicTextGeneration(llm, options);
+		});
 
-			it("should handle streaming", { retry: 3 }, async () => {
-				await handleStreaming(llm, options);
-			});
+		it("should handle tool calling", { retry: 3 }, async () => {
+			await handleToolCall(llm, options);
+		});
 
-			it("should handle thinking mode", { retry: 3 }, async () => {
-				await handleThinking(llm, thinkingOptions);
-			});
+		it("should handle streaming", { retry: 3 }, async () => {
+			await handleStreaming(llm, options);
+		});
 
-			it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-				await multiTurn(llm, thinkingOptions);
-			});
-		},
-	);
+		it("should handle thinking mode", { retry: 3 }, async () => {
+			await handleThinking(llm, thinkingOptions);
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
+			await multiTurn(llm, thinkingOptions);
+		});
+	});
 
 	describe.skipIf(!process.env.HF_TOKEN)("Hugging Face Provider (Kimi-K2.5 via OpenAI Completions)", () => {
 		const llm = getModel("huggingface", "moonshotai/Kimi-K2.5");
@@ -892,8 +901,9 @@ describe("Generate E2E Tests", () => {
 		},
 	);
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider (via OpenAI Completions)", () => {
-		const llm = getZaiTestModel({ toolStream: true });
+	const zaiToolStreamModel = getZaiTestModel({ toolStream: true });
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiToolStreamModel)("zAI Provider (via OpenAI Completions)", () => {
+		const llm = zaiToolStreamModel!;
 
 		it("should complete basic text generation", { retry: 3 }, async () => {
 			await basicTextGeneration(llm);
@@ -990,29 +1000,33 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider (Anthropic Messages)", () => {
-		const llm = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)(
+		"Kimi For Coding Provider (Anthropic Messages)",
+		() => {
+			const llm = kimiCodingModel!;
 
-		it("should complete basic text generation", { retry: 3 }, async () => {
-			await basicTextGeneration(llm);
-		});
+			it("should complete basic text generation", { retry: 3 }, async () => {
+				await basicTextGeneration(llm);
+			});
 
-		it("should handle tool calling", { retry: 3 }, async () => {
-			await handleToolCall(llm);
-		});
+			it("should handle tool calling", { retry: 3 }, async () => {
+				await handleToolCall(llm);
+			});
 
-		it("should handle streaming", { retry: 3 }, async () => {
-			await handleStreaming(llm);
-		});
+			it("should handle streaming", { retry: 3 }, async () => {
+				await handleStreaming(llm);
+			});
 
-		it("should handle thinking mode", { retry: 3 }, async () => {
-			await handleThinking(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
-		});
+			it("should handle thinking mode", { retry: 3 }, async () => {
+				await handleThinking(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
+			});
 
-		it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
-			await multiTurn(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
-		});
-	});
+			it("should handle multi-turn with thinking and tools", { retry: 3 }, async () => {
+				await multiTurn(llm, { thinkingEnabled: true, thinkingBudgetTokens: 2048 });
+			});
+		},
+	);
 
 	describe.skipIf(!process.env.XIAOMI_API_KEY)(
 		"Xiaomi MiMo (API billing) Provider (Xiaomi MiMo-V2.5-Pro via Anthropic Messages)",

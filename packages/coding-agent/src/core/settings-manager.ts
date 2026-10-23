@@ -164,6 +164,14 @@ export interface Settings {
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
+	proxy?: ProxySettings; // Hermes CLIProxy configuration
+}
+
+export interface ProxySettings {
+	/** URL of the Hermes CLIProxy server, e.g. "http://localhost:3000" */
+	url: string;
+	/** Bearer auth token for the proxy */
+	authToken: string;
 }
 
 export interface AgentTracesSettings {
@@ -1211,6 +1219,10 @@ export class SettingsManager {
 
 	getMcpServers(): Record<string, McpServerConfig> | undefined {
 		return this.settings.mcpServers;
+	}
+
+	getProxySettings(): ProxySettings | undefined {
+		return this.settings.proxy;
 	}
 
 	setEnabledModels(patterns: string[] | undefined): void {

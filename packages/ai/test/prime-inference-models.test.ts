@@ -82,8 +82,10 @@ describe("Prime Inference models", () => {
 			expect(model.input).toEqual(["text", "image"]);
 			expect(model.contextWindow).toBe(1048576);
 			expect(model.maxTokens).toBe(1048576);
-			expect(model.cost.input).toBe(3);
-			expect(model.cost.output).toBe(15);
+			// Live catalogs reprice between revisions (3 → 3.45 broke an exact pin),
+			// so assert the cost shape rather than a price models.dev controls.
+			expect(model.cost.input).toBeGreaterThan(0);
+			expect(model.cost.output).toBeGreaterThan(0);
 		}
 	});
 

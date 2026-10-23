@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { Agent, type AgentMessage, type ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentMessage, streamProxyWithFallback, type ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { clampThinkingLevel, type Message, type Model, streamSimple, supportsFastMode } from "@earendil-works/pi-ai";
 import { getAgentDir } from "../config.js";
 import { AgentSession } from "./agent-session.js";
@@ -309,14 +309,24 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				throw new Error(auth.error);
 			}
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
-			return streamSimple(model, context, {
+			const proxySettings = settingsManager.getProxySettings();
+			const resolvedOptions = {
 				...options,
 				apiKey: auth.apiKey,
 				timeoutMs: options?.timeoutMs ?? providerRetrySettings.timeoutMs,
 				maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
 				maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
 				headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
-			});
+			};
+			if (proxySettings) {
+				return streamProxyWithFallback(model, context, {
+					...resolvedOptions,
+					authToken: proxySettings.authToken,
+					proxyUrl: proxySettings.url,
+					fallbackApiKey: auth.apiKey,
+				});
+			}
+			return streamSimple(model, context, resolvedOptions);
 		},
 		onPayload: async (payload, _model) => {
 			const runner = extensionRunnerRef.current;
