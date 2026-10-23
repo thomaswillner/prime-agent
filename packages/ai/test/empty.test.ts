@@ -335,7 +335,7 @@ describe("AI Providers Empty Message Tests", () => {
 	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
 		"Cloudflare AI Gateway Provider Empty Messages",
 		() => {
-			const llm = cloudflareGatewayWorkersAi;
+			const llm = cloudflareGatewayWorkersAi!;
 
 			it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
 				await testEmptyMessage(llm);
@@ -375,8 +375,9 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider Empty Messages", () => {
-		const llm = getZaiTestModel();
+	const zaiModel = getZaiTestModel();
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiModel)("zAI Provider Empty Messages", () => {
+		const llm = zaiModel!;
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
 			await testEmptyMessage(llm);
@@ -524,8 +525,9 @@ describe("AI Providers Empty Message Tests", () => {
 		},
 	);
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider Empty Messages", () => {
-		const llm = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding Provider Empty Messages", () => {
+		const llm = kimiCodingModel!;
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
 			await testEmptyMessage(llm);

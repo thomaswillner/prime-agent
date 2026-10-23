@@ -522,7 +522,7 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
 		"Cloudflare AI Gateway Provider Unicode Handling",
 		() => {
-			const llm = cloudflareGatewayWorkersAi;
+			const llm = cloudflareGatewayWorkersAi!;
 
 			it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
 				await testEmojiInToolResults(llm);
@@ -558,8 +558,9 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider Unicode Handling", () => {
-		const llm = getZaiTestModel({ toolStream: true });
+	const zaiToolStreamModel = getZaiTestModel({ toolStream: true });
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiToolStreamModel)("zAI Provider Unicode Handling", () => {
+		const llm = zaiToolStreamModel!;
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testEmojiInToolResults(llm);
@@ -691,8 +692,9 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		},
 	);
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider Unicode Handling", () => {
-		const llm = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding Provider Unicode Handling", () => {
+		const llm = kimiCodingModel!;
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testEmojiInToolResults(llm);

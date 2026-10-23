@@ -340,7 +340,7 @@ describe("totalTokens field", () => {
 			"workers-ai model - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const llm = cloudflareGatewayWorkersAi;
+				const llm = cloudflareGatewayWorkersAi!;
 
 				console.log(`\nCloudflare AI Gateway / ${llm.id}:`);
 				const { first, second } = await testTotalTokensWithCache(llm, {
@@ -379,9 +379,10 @@ describe("totalTokens field", () => {
 	// z.ai
 	// =========================================================================
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("z.ai", () => {
+	const zaiModel = getZaiTestModel();
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiModel)("z.ai", () => {
 		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
-			const llm = getZaiTestModel();
+			const llm = zaiModel!;
 
 			console.log(`\nz.ai / ${llm.id}:`);
 			const { first, second } = await testTotalTokensWithCache(llm, { apiKey: process.env.ZAI_API_KEY });
@@ -542,9 +543,10 @@ describe("totalTokens field", () => {
 	// Kimi For Coding
 	// =========================================================================
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding", () => {
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding", () => {
 		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
-			const llm = getKimiCodingTestModel();
+			const llm = kimiCodingModel!;
 
 			console.log(`\nKimi For Coding / ${llm.id}:`);
 			const { first, second } = await testTotalTokensWithCache(llm, { apiKey: process.env.KIMI_API_KEY });
