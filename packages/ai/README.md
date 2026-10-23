@@ -1275,6 +1275,7 @@ Create a new provider file (for example `amazon-bedrock.ts`) that exports:
 - Add logic to fetch and parse models from the provider's source (e.g., models.dev API)
 - Map provider model data to the standardized `Model` interface
 - Handle provider-specific quirks (pricing format, capability flags, model ID transformations)
+- Run `npm run generate-models` yourself and commit the resulting `src/models.generated.ts`. `npm run build` does not run it: the committed catalog is the pinned build input, so a build type-checks the reviewed catalog rather than whatever the provider APIs happen to serve.
 
 #### 5. Tests (`test/`)
 

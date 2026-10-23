@@ -53,6 +53,8 @@ interface ProviderModelPair {
 	upstreamApiKeyEnv?: string;
 }
 
+const kimiCodingModel = getKimiCodingTestModel();
+
 const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// Anthropic
 	{ provider: "anthropic", model: "claude-sonnet-4-5", label: "anthropic-claude-sonnet-4-5" },
@@ -110,8 +112,11 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	{ provider: "groq", model: "openai/gpt-oss-120b", label: "groq-gpt-oss-120b" },
 	// Hugging Face
 	{ provider: "huggingface", model: "moonshotai/Kimi-K2.5", label: "huggingface-kimi-k2.5" },
-	// Kimi For Coding
-	{ provider: "kimi-coding", model: getKimiCodingTestModel().id, label: "kimi-coding" },
+	// Kimi For Coding - dropped from the matrix when the catalog lists no kimi-coding
+	// model, rather than throwing while this module-scope array is built.
+	...(kimiCodingModel
+		? ([{ provider: "kimi-coding", model: kimiCodingModel.id, label: "kimi-coding" }] as ProviderModelPair[])
+		: []),
 	// Mistral
 	{ provider: "mistral", model: "devstral-medium-latest", label: "mistral-devstral-medium" },
 	// MiniMax

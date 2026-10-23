@@ -164,6 +164,7 @@ Create provider file exporting:
 
 - Add logic to fetch/parse models from provider source
 - Map to standardized `Model` interface
+- Run `npm run generate-models` in `packages/ai` and commit the regenerated `src/models.generated.ts`. `npm run build` no longer runs it, so a new provider does not reach the catalog until you regenerate and commit it.
 
 ### 5. Tests (`packages/ai/test/`)
 

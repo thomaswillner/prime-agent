@@ -333,9 +333,10 @@ describe("Context overflow error handling", () => {
 	// or may rate limit instead
 	// =============================================================================
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("z.ai", () => {
+	const zaiSmallestContextModel = getZaiTestModel({ smallestContextWindow: true });
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiSmallestContextModel)("z.ai", () => {
 		it("should detect overflow via isContextOverflow when z.ai reports it", async () => {
-			const model = getZaiTestModel({ smallestContextWindow: true });
+			const model = zaiSmallestContextModel!;
 			const result = await testContextOverflow(model, process.env.ZAI_API_KEY!);
 			logResult(result);
 
@@ -450,9 +451,10 @@ describe("Context overflow error handling", () => {
 	// Kimi For Coding
 	// =============================================================================
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding", () => {
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding", () => {
 		it("should detect overflow via isContextOverflow", async () => {
-			const model = getKimiCodingTestModel();
+			const model = kimiCodingModel!;
 			const result = await testContextOverflow(model, process.env.KIMI_API_KEY!);
 			logResult(result);
 

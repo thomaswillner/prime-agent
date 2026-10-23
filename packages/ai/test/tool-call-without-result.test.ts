@@ -183,7 +183,7 @@ describe("Tool Call Without Result Tests", () => {
 	describe.skipIf(!hasCloudflareAiGatewayCredentials() || !cloudflareGatewayWorkersAi)(
 		"Cloudflare AI Gateway Provider",
 		() => {
-			const model = cloudflareGatewayWorkersAi;
+			const model = cloudflareGatewayWorkersAi!;
 
 			it(
 				"should filter out tool calls without corresponding tool results",
@@ -203,8 +203,9 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.ZAI_API_KEY)("zAI Provider", () => {
-		const model = getZaiTestModel({ toolStream: true });
+	const zaiToolStreamModel = getZaiTestModel({ toolStream: true });
+	describe.skipIf(!process.env.ZAI_API_KEY || !zaiToolStreamModel)("zAI Provider", () => {
+		const model = zaiToolStreamModel!;
 
 		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testToolCallWithoutResult(model);
@@ -259,8 +260,9 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.KIMI_API_KEY)("Kimi For Coding Provider", () => {
-		const model = getKimiCodingTestModel();
+	const kimiCodingModel = getKimiCodingTestModel();
+	describe.skipIf(!process.env.KIMI_API_KEY || !kimiCodingModel)("Kimi For Coding Provider", () => {
+		const model = kimiCodingModel!;
 
 		it("should filter out tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
 			await testToolCallWithoutResult(model);
