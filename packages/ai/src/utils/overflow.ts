@@ -49,7 +49,9 @@ const UNAMBIGUOUS_OVERFLOW_PATTERNS = [
 	/too large for model with \d+ maximum context length/i, // Mistral
 	/model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
 	/prompt too long; exceeded (?:max )?context length/i, // Ollama explicit overflow error
-	/^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i, // Cerebras: 400/413 with no body (429 is excluded by the anchor)
+	// Cerebras: 400/413 with no body. 429 is excluded by the digits, not the anchor, so the
+	// match also has to work after a classified prefix ("Provider rejected the request: ...").
+	/(?:^|:\s)4(?:00|13)\s*(?:status code)?\s*\(no body\)/i,
 ];
 
 /**

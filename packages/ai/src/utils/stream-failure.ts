@@ -129,11 +129,6 @@ function truncatePreservedDetail(raw: string): string {
 interface StreamFailureParts {
 	info: StreamFailureInfo;
 	detail?: string;
-	/**
-	 * True when the provider gave neither a structured error type nor a body message,
-	 * so `error.message` was the only evidence classification had to work with.
-	 */
-	classifiedFromMessageOnly?: boolean;
 }
 
 function extractStreamFailureParts(error: unknown): StreamFailureParts {
@@ -191,7 +186,6 @@ function extractStreamFailureParts(error: unknown): StreamFailureParts {
 			requestId,
 		},
 		detail,
-		classifiedFromMessageOnly: providerErrorType === undefined && detail === undefined,
 	};
 }
 
@@ -210,28 +204,26 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
  * errors pass through verbatim so their text (which downstream retry matching
  * may depend on) is preserved.
  *
- * When no structured provider message exists, `error.message` is kept as the detail,
- * capped at MAX_PRESERVED_DETAIL_LENGTH, rather than replaced by the canned kind
- * string. Replacing it destroys the evidence downstream matchers read: a message like
- * "prompt is too long: ...; server overloaded" classifies as `overloaded` off one
+ * When the provider gave no structured body message, `error.message` is kept as the
+ * detail, capped at MAX_PRESERVED_DETAIL_LENGTH, rather than replaced by the canned
+ * kind string. Replacing it destroys the evidence downstream matchers read: a message
+ * like "prompt is too long: ...; server overloaded" classifies as `overloaded` off one
  * incidental word, and collapsing it to "Provider overloaded" hides the overflow from
  * isContextOverflow(), which then lets the caller retry the same oversized request
  * instead of compacting.
  *
- * The condition deliberately does not also require `status === undefined`. A status
- * classifies the kind but carries no overflow evidence, so gating on it would discard
- * the message for a gateway that returns a real overflow under an HTTP 429 — the same
- * defect in a new place.
+ * Only the absence of `detail` gates this. A status or a provider error type fixes the
+ * kind but carries no overflow evidence of its own, so gating on either would discard
+ * the message for a gateway returning a real overflow under an HTTP 429, or for a named
+ * SDK error like Google's `ApiError` whose own message is the only evidence there is.
  */
 export function formatStreamFailureMessage(error: unknown): string {
 	if (error instanceof StreamFailureError) return error.message;
-	const { info, detail, classifiedFromMessageOnly } = extractStreamFailureParts(error);
+	const { info, detail } = extractStreamFailureParts(error);
 	if (info.kind === "unknown") {
 		return error instanceof Error ? error.message : JSON.stringify(error);
 	}
-	const preserved =
-		detail ??
-		(classifiedFromMessageOnly && error instanceof Error ? truncatePreservedDetail(error.message) : undefined);
+	const preserved = detail ?? (error instanceof Error ? truncatePreservedDetail(error.message) : undefined);
 	return streamFailureMessage(info, preserved);
 }
 

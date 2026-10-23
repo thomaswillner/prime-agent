@@ -131,12 +131,43 @@ describe("overflow guard: shape 2 - a real signal must not be discarded as quota
 });
 
 describe("overflow guard: shape 3 - the signal must survive provider formatting", () => {
-	it.each(PROVIDER_OVERFLOW_ERRORS)("survives formatStreamFailureMessage: %s", (text) => {
+	// Providers assign `output.errorMessage = formatStreamFailureMessage(error)`, so the
+	// guard reads the formatted text, not the original.
+	it.each(PROVIDER_OVERFLOW_ERRORS)("passes an unclassifiable overflow through verbatim: %s", (text) => {
 		const raw = new Error(text);
-		// Providers assign `output.errorMessage = formatStreamFailureMessage(error)`, so
-		// the guard reads the formatted text, not the original.
 		expect(isContextOverflow(errorMessage(raw.message), 200_000)).toBe(true);
 		expect(isContextOverflow(errorMessage(formatStreamFailureMessage(raw)), 200_000)).toBe(true);
+	});
+
+	// A bare Error classifies as `unknown`, which returns the message verbatim, so the
+	// case above never reaches the preservation branch. Providers throw a named SDK error
+	// carrying a status and no nested body — Google's ApiError is the documented one —
+	// and that is the shape the branch has to handle.
+	it.each(PROVIDER_OVERFLOW_ERRORS)("survives formatting as a named SDK error: %s", (text) => {
+		const formatted = formatStreamFailureMessage(Object.assign(new Error(text), { name: "ApiError", status: 400 }));
+		expect(formatted).toContain("Provider rejected the request");
+		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(true);
+	});
+
+	it("keeps the relaxed Cerebras anchor 400/413-only", () => {
+		// The anchor had to accept a detail prefix to survive formatting; the digits, not
+		// the anchor, are what keep a 429 out.
+		expect(
+			isContextOverflow(
+				errorMessage("Provider rejected the request (BadRequestError, 400): 400 status code (no body)"),
+				200_000,
+			),
+		).toBe(true);
+		expect(
+			isContextOverflow(errorMessage("Provider rate limit exceeded (429): 429 status code (no body)"), 200_000),
+		).toBe(false);
+	});
+
+	it.each(PROVIDER_OVERFLOW_ERRORS)("survives formatting when a string code names the error: %s", (text) => {
+		const formatted = formatStreamFailureMessage(
+			Object.assign(new Error(text), { code: "invalid_argument", status: 400 }),
+		);
+		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(true);
 	});
 
 	it.each(COLLIDING_OVERFLOW_ERRORS)("survives formatting when another kind matches first: %s", (text) => {
