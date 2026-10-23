@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Changed `npm run build` to type-check the committed model catalog instead of regenerating it from the provider APIs first, so a build of a given commit is reproducible; refresh the catalog deliberately with `npm run generate-models` and commit the result.
 - Fixed the shared test model resolvers throwing during test collection when the catalog listed no model for a provider, which failed whole test files instead of skipping the suites that need one.
 
 ## [0.7.1] - 2026-08-07
