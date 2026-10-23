@@ -23,14 +23,32 @@ for (const [provider, models] of Object.entries(MODELS)) {
  * present keeps these signatures exact for every provider in the catalog and collapses to
  * never for one that is absent.
  */
-type CatalogModels<TProvider extends KnownProvider> = (typeof MODELS)[TProvider & keyof typeof MODELS];
+type CatalogModels<TProvider extends KnownProvider> = TProvider extends keyof typeof MODELS
+	? (typeof MODELS)[TProvider]
+	: never;
+
+/**
+ * The model ids MODELS carries for a provider, and `never` for a provider it does not
+ * carry. The absent branch must be spelled out: `keyof never` widens to
+ * `string | number | symbol`, so constraining an id with `keyof CatalogModels<P>` would
+ * accept any string once P dropped out of the catalog. getModel() would then type-check,
+ * return undefined through its cast, and crash the caller - a silent failure in exactly
+ * the thin-catalog case this narrowing exists to make safe.
+ */
+type CatalogModelId<TProvider extends KnownProvider> = TProvider extends keyof typeof MODELS
+	? keyof (typeof MODELS)[TProvider]
+	: never;
 
 type ModelApi<
 	TProvider extends KnownProvider,
-	TModelId extends keyof CatalogModels<TProvider>,
-> = CatalogModels<TProvider>[TModelId] extends { api: infer TApi } ? (TApi extends Api ? TApi : never) : never;
+	TModelId extends CatalogModelId<TProvider>,
+> = CatalogModels<TProvider>[TModelId & keyof CatalogModels<TProvider>] extends { api: infer TApi }
+	? TApi extends Api
+		? TApi
+		: never
+	: never;
 
-export function getModel<TProvider extends KnownProvider, TModelId extends keyof CatalogModels<TProvider>>(
+export function getModel<TProvider extends KnownProvider, TModelId extends CatalogModelId<TProvider>>(
 	provider: TProvider,
 	modelId: TModelId,
 ): Model<ModelApi<TProvider, TModelId>> {
@@ -44,9 +62,9 @@ export function getProviders(): KnownProvider[] {
 
 export function getModels<TProvider extends KnownProvider>(
 	provider: TProvider,
-): Model<ModelApi<TProvider, keyof CatalogModels<TProvider>>>[] {
+): Model<ModelApi<TProvider, CatalogModelId<TProvider>>>[] {
 	const models = modelRegistry.get(provider);
-	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, keyof CatalogModels<TProvider>>>[]) : [];
+	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, CatalogModelId<TProvider>>>[]) : [];
 }
 
 export function supportsFastMode<TApi extends Api>(model: Model<TApi>): boolean {
