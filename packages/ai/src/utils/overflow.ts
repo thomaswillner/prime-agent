@@ -82,9 +82,13 @@ const AMBIGUOUS_OVERFLOW_PATTERNS = [
  * pattern without this exclusion.
  */
 const NON_OVERFLOW_PATTERNS = [
-	/^(Throttling error|Service unavailable):/i, // AWS Bedrock non-overflow errors (human-readable prefixes from formatBedrockError)
+	// AWS Bedrock non-overflow errors (human-readable prefixes from formatBedrockError).
+	// Accepts a detail boundary as well as the string start: formatStreamFailureMessage()
+	// prepends its classified summary, and a `^`-only anchor stops vetoing once it does.
+	/(?:^|:\s)(Throttling error|Service unavailable):/i,
 	/rate limit/i, // Generic rate limiting
 	/too many requests/i, // Generic HTTP 429 style
+	/quota/i, // Explicit quota exhaustion, e.g. "Token limit exceeded: monthly quota exhausted"
 ];
 
 /**

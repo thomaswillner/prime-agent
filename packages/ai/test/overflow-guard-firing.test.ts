@@ -120,6 +120,22 @@ describe("overflow guard: shape 2 - a real signal must not be discarded as quota
 		expect(isContextOverflow(errorMessage(text), 200_000)).toBe(false);
 	});
 
+	it("files an explicit quota exhaustion as non-overflow", () => {
+		// "token limit exceeded" is an ambiguous signal, so an actual quota failure that
+		// uses that wording must be vetoed...
+		expect(isContextOverflow(errorMessage("Token limit exceeded: monthly quota exhausted"), 200_000)).toBe(false);
+		// ...while an unambiguous overflow that merely mentions a quota is still detected.
+		expect(
+			isContextOverflow(errorMessage("prompt is too long: 213462 tokens > 200000 maximum (quota 200/min)"), 200_000),
+		).toBe(true);
+		expect(
+			isContextOverflow(
+				errorMessage("This endpoint's maximum context length is 131072 tokens; quota 200/min"),
+				200_000,
+			),
+		).toBe(true);
+	});
+
 	it("keeps the throttling veto for generic signals that a quota error can produce", () => {
 		// "Too many tokens" is what Bedrock says for HTTP 429, so it stays vetoed...
 		expect(isContextOverflow(errorMessage("Throttling error: Too many tokens, please wait again."), 200_000)).toBe(
@@ -147,6 +163,25 @@ describe("overflow guard: shape 3 - the signal must survive provider formatting"
 		const formatted = formatStreamFailureMessage(Object.assign(new Error(text), { name: "ApiError", status: 400 }));
 		expect(formatted).toContain("Provider rejected the request");
 		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(true);
+	});
+
+	it("keeps an overflow marker that a long gateway prefix pushes past the head excerpt", () => {
+		const prefixed = `gateway-route=${"a".repeat(230)}; upstream=vertex; prompt is too long: 213462 tokens > 200000 maximum`;
+		const formatted = formatStreamFailureMessage(
+			Object.assign(new Error(prefixed), { name: "ApiError", status: 400 }),
+		);
+		expect(formatted).toContain("prompt is too long");
+		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(true);
+	});
+
+	it("keeps the non-overflow veto effective behind the classified prefix", () => {
+		// The veto patterns are anchored, and formatting prepends a summary, so a `^`-only
+		// anchor stops vetoing and the ambiguous signal in the text wins.
+		const raw = "Service unavailable: context_length_exceeded";
+		expect(isContextOverflow(errorMessage(raw), 200_000)).toBe(false);
+		const formatted = formatStreamFailureMessage(Object.assign(new Error(raw), { status: 503 }));
+		expect(formatted).toContain("Service unavailable");
+		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(false);
 	});
 
 	it("keeps the relaxed Cerebras anchor 400/413-only", () => {
@@ -198,11 +233,12 @@ describe("overflow guard: shape 3 - the signal must survive provider formatting"
 	});
 
 	it("keeps the preserved evidence to an excerpt rather than the whole payload", () => {
-		const payload = `<html><title>502 Bad Gateway</title><body>${"x".repeat(4000)}</body></html>`;
+		// Head and tail are both kept, so the control is that the bulk between them goes.
+		const payload = `<html><title>502 Bad Gateway</title><body>${"x".repeat(2000)}BULK${"y".repeat(2000)}</body></html>`;
 		const formatted = formatStreamFailureMessage(Object.assign(new Error(payload), { status: 502 }));
 		expect(formatted).toContain("Provider server error (502)");
-		expect(formatted.length).toBeLessThan(300);
-		expect(formatted).not.toContain("</html>");
+		expect(formatted.length).toBeLessThan(500);
+		expect(formatted).not.toContain("BULK");
 	});
 
 	it("preserves the evidence when only an HTTP status classified the failure", () => {

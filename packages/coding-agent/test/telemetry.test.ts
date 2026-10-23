@@ -573,6 +573,9 @@ describe("run error categorization", () => {
 	it("still files a genuine rate limit as rate_limit", () => {
 		expect(categoryFor("Rate limit exceeded, please retry after 30 seconds.")).toBe("rate_limit");
 		expect(categoryFor("429 Too many requests. Please slow down.")).toBe("rate_limit");
+		// Consulting the overflow detector first must not capture a quota failure that
+		// happens to use ambiguous token-limit wording.
+		expect(categoryFor("Token limit exceeded: monthly quota exhausted")).toBe("rate_limit");
 	});
 
 	it("files Bedrock throttling as rate_limit even though it names tokens", () => {

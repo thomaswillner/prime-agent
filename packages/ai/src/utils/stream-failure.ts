@@ -115,15 +115,22 @@ const MAX_RAW_LENGTH = 2000;
  * envelope, HTML error page, trace). Preserved evidence is capped well below
  * MAX_RAW_LENGTH, which is the post-mortem budget for logs, so a user-facing message
  * can carry the provider's sentence without becoming the payload.
+ *
+ * Head and tail are both kept, because a gateway that prepends routing metadata pushes
+ * the provider's own sentence to the end and a head-only excerpt would drop it. This
+ * bounds the loss rather than removing it: a marker in the middle of a very long body
+ * is still cut. No truncation policy closes that gap; carrying the classification
+ * structurally instead of as prose is what would.
  */
-const MAX_PRESERVED_DETAIL_LENGTH = 200;
+const PRESERVED_DETAIL_SEGMENT = 200;
 
 export function truncateRawPayload(raw: string): string {
 	return raw.length > MAX_RAW_LENGTH ? `${raw.slice(0, MAX_RAW_LENGTH)}…` : raw;
 }
 
 function truncatePreservedDetail(raw: string): string {
-	return raw.length > MAX_PRESERVED_DETAIL_LENGTH ? `${raw.slice(0, MAX_PRESERVED_DETAIL_LENGTH)}…` : raw;
+	if (raw.length <= PRESERVED_DETAIL_SEGMENT * 2) return raw;
+	return `${raw.slice(0, PRESERVED_DETAIL_SEGMENT)}…${raw.slice(-PRESERVED_DETAIL_SEGMENT)}`;
 }
 
 interface StreamFailureParts {
@@ -205,7 +212,7 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
  * may depend on) is preserved.
  *
  * When the provider gave no structured body message, `error.message` is kept as the
- * detail, capped at MAX_PRESERVED_DETAIL_LENGTH, rather than replaced by the canned
+ * detail, capped at PRESERVED_DETAIL_SEGMENT per end, rather than replaced by the canned
  * kind string. Replacing it destroys the evidence downstream matchers read: a message
  * like "prompt is too long: ...; server overloaded" classifies as `overloaded` off one
  * incidental word, and collapsing it to "Provider overloaded" hides the overflow from
