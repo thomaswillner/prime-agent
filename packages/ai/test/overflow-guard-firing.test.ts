@@ -4,24 +4,11 @@ import { isContextOverflow, usesSilentOverflowDetection } from "../src/utils/ove
 import { formatStreamFailureMessage } from "../src/utils/stream-failure.js";
 
 /**
- * Negative controls for the context-overflow guard.
+ * Negative controls for the context-overflow guard. overflow.test.ts covers the answer
+ * for inputs handed to the guard directly; a guard that never runs, or whose input was
+ * rewritten upstream, is indistinguishable from "checked, no overflow" by that test.
  *
- * overflow.test.ts checks that isContextOverflow() returns the right answer for
- * inputs handed to it directly. That cannot catch a guard that never gets to run,
- * or one whose input was rewritten upstream - both look identical to "checked, no
- * overflow" from the outside. These tests exercise the three ways this guard can
- * report a plausible pass without evaluating anything:
- *
- *   1. it never dispatches (no context window, so the usage-based cases are skipped)
- *   2. a real signal is discarded as throttling/quota
- *   3. an incidental word elsewhere in the text is classified instead of the signal
- *
- * A false negative is not neutral. AgentSession._isRetryableError() treats "not an
- * overflow" as "retryable", so a missed overflow stops compaction and re-sends the
- * same oversized request until the retry budget is gone.
- *
- * Each block asserts both directions - the guard fires when it should AND stays
- * quiet when it should not - so stubbing isContextOverflow() to a constant in
+ * Each block asserts both directions, so stubbing isContextOverflow() to a constant in
  * either direction turns this file red.
  */
 
@@ -111,9 +98,8 @@ describe("overflow guard: shape 1 - the guard must be able to dispatch", () => {
 	it("detects a silent overflow when wired, and is a no-op when not", () => {
 		const message = silentOverflow(500_000);
 		expect(isContextOverflow(message, 200_000)).toBe(true);
-		// Documents the trap: the same message reads as "no overflow" with no window.
-		// usesSilentOverflowDetection() is the only way to tell this apart from a real
-		// negative, so callers must not infer "checked" from a false return.
+		// The same message reads as "no overflow" with no window, so callers must not
+		// infer "checked" from a false return.
 		expect(isContextOverflow(message, 0)).toBe(false);
 		expect(isContextOverflow(message, undefined)).toBe(false);
 	});
@@ -147,9 +133,8 @@ describe("overflow guard: shape 2 - a real signal must not be discarded as quota
 describe("overflow guard: shape 3 - the signal must survive provider formatting", () => {
 	it.each(PROVIDER_OVERFLOW_ERRORS)("survives formatStreamFailureMessage: %s", (text) => {
 		const raw = new Error(text);
-		// Providers assign `output.errorMessage = formatStreamFailureMessage(error)`
-		// before this guard ever sees the message, so the guard reads the formatted
-		// text, not the original.
+		// Providers assign `output.errorMessage = formatStreamFailureMessage(error)`, so
+		// the guard reads the formatted text, not the original.
 		expect(isContextOverflow(errorMessage(raw.message), 200_000)).toBe(true);
 		expect(isContextOverflow(errorMessage(formatStreamFailureMessage(raw)), 200_000)).toBe(true);
 	});
@@ -179,5 +164,24 @@ describe("overflow guard: shape 3 - the signal must survive provider formatting"
 
 	it.each(NON_OVERFLOW_ERRORS)("formatting does not invent an overflow signal: %s", (text) => {
 		expect(isContextOverflow(errorMessage(formatStreamFailureMessage(new Error(text))), 200_000)).toBe(false);
+	});
+
+	it("keeps the preserved evidence to an excerpt rather than the whole payload", () => {
+		const payload = `<html><title>502 Bad Gateway</title><body>${"x".repeat(4000)}</body></html>`;
+		const formatted = formatStreamFailureMessage(Object.assign(new Error(payload), { status: 502 }));
+		expect(formatted).toContain("Provider server error (502)");
+		expect(formatted.length).toBeLessThan(300);
+		expect(formatted).not.toContain("</html>");
+	});
+
+	it("preserves the evidence when only an HTTP status classified the failure", () => {
+		// A status fixes the kind but carries no overflow evidence, so requiring
+		// `status === undefined` before preserving the message would hide a real overflow
+		// that a gateway returned under a 429.
+		const formatted = formatStreamFailureMessage(
+			Object.assign(new Error("prompt is too long: 213462 tokens > 200000 maximum"), { status: 429 }),
+		);
+		expect(formatted).toContain("Provider rate limit exceeded (429)");
+		expect(isContextOverflow(errorMessage(formatted), 200_000)).toBe(true);
 	});
 });

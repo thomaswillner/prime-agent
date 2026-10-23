@@ -110,8 +110,20 @@ export function streamFailureFromStopReason(
 
 const MAX_RAW_LENGTH = 2000;
 
+/**
+ * A provider's own error sentence is short; anything much longer is a payload (JSON
+ * envelope, HTML error page, trace). Preserved evidence is capped well below
+ * MAX_RAW_LENGTH, which is the post-mortem budget for logs, so a user-facing message
+ * can carry the provider's sentence without becoming the payload.
+ */
+const MAX_PRESERVED_DETAIL_LENGTH = 200;
+
 export function truncateRawPayload(raw: string): string {
 	return raw.length > MAX_RAW_LENGTH ? `${raw.slice(0, MAX_RAW_LENGTH)}…` : raw;
+}
+
+function truncatePreservedDetail(raw: string): string {
+	return raw.length > MAX_PRESERVED_DETAIL_LENGTH ? `${raw.slice(0, MAX_PRESERVED_DETAIL_LENGTH)}…` : raw;
 }
 
 interface StreamFailureParts {
@@ -194,16 +206,22 @@ export function extractStreamFailureInfo(error: unknown): StreamFailureInfo {
 
 /**
  * User-facing message for a thrown stream error: a classified one-liner with
- * the provider's own short message, never the raw payload/trace. Unrecognized
+ * the provider's own short message, never a full payload or trace. Unrecognized
  * errors pass through verbatim so their text (which downstream retry matching
  * may depend on) is preserved.
  *
- * When classification had only `error.message` to go on, that text is kept as the
- * detail rather than replaced by the canned kind string. Replacing it destroys the
- * evidence downstream matchers read: a message like "prompt is too long: ...; server
- * overloaded" classifies as `overloaded` off one incidental word, and collapsing it
- * to "Provider overloaded" hides the overflow from isContextOverflow(), which then
- * lets the caller retry the same oversized request instead of compacting.
+ * When no structured provider message exists, `error.message` is kept as the detail,
+ * capped at MAX_PRESERVED_DETAIL_LENGTH, rather than replaced by the canned kind
+ * string. Replacing it destroys the evidence downstream matchers read: a message like
+ * "prompt is too long: ...; server overloaded" classifies as `overloaded` off one
+ * incidental word, and collapsing it to "Provider overloaded" hides the overflow from
+ * isContextOverflow(), which then lets the caller retry the same oversized request
+ * instead of compacting.
+ *
+ * The condition deliberately does not also require `status === undefined`. A status
+ * classifies the kind but carries no overflow evidence, so gating on it would discard
+ * the message for a gateway that returns a real overflow under an HTTP 429 — the same
+ * defect in a new place.
  */
 export function formatStreamFailureMessage(error: unknown): string {
 	if (error instanceof StreamFailureError) return error.message;
@@ -212,7 +230,8 @@ export function formatStreamFailureMessage(error: unknown): string {
 		return error instanceof Error ? error.message : JSON.stringify(error);
 	}
 	const preserved =
-		detail ?? (classifiedFromMessageOnly && error instanceof Error ? truncateRawPayload(error.message) : undefined);
+		detail ??
+		(classifiedFromMessageOnly && error instanceof Error ? truncatePreservedDetail(error.message) : undefined);
 	return streamFailureMessage(info, preserved);
 }
 
