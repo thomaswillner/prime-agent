@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Changed `npm run build` to type-check the committed model catalog instead of regenerating it from the provider APIs first, so a build of a given commit is reproducible; refresh the catalog deliberately with `npm run generate-models` and commit the result.
+
 ## [0.7.1] - 2026-08-07
 
 ## [0.7.0] - 2026-08-05
