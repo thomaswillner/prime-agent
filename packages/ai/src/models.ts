@@ -13,30 +13,32 @@ for (const [provider, models] of Object.entries(MODELS)) {
 }
 
 /**
- * The catalog entry for a provider, narrowed to the providers MODELS actually carries.
+ * The catalog entry for a provider, and the ids it carries, narrowed to the providers
+ * MODELS actually holds.
  *
- * MODELS is generated from live provider sources at build time, so a KnownProvider whose
- * source returns no models has no key in it at all, and which providers are missing
- * differs from one generation to the next. Indexing by a bare TProvider assumes
- * KnownProvider is a subset of keyof typeof MODELS, which the generator cannot guarantee;
- * when that assumption breaks the package stops compiling. Intersecting with the keys
- * present keeps these signatures exact for every provider in the catalog and collapses to
- * never for one that is absent.
+ * `src/models.generated.ts` is a committed artifact refreshed by an explicit
+ * `npm run generate-models`, so its provider keys change only when someone regenerates
+ * and commits it. A provider whose upstream source listed no models at that moment has
+ * no key at all, which is why KnownProvider cannot be assumed to be a subset of
+ * `keyof typeof MODELS`.
+ *
+ * Both helpers are deliberately non-distributive (`[TProvider] extends [...]`). Two
+ * unsound alternatives were tried and rejected:
+ *   - `keyof CatalogModels<P>` where the absent branch is `never`: `keyof never` widens
+ *     to `string | number | symbol`, so any string was accepted for an absent provider.
+ *   - a distributive conditional: for `P = "openai" | "anthropic"` it unions the ids of
+ *     both, so an openai id type-checked against a value that was anthropic at runtime.
+ * Either one lets getModel() type-check, return undefined through its cast, and crash
+ * the caller. Keeping the conditional non-distributive preserves the provider/model
+ * correlation: a union of providers yields only the ids common to all of them, and a
+ * union containing an absent provider yields never.
  */
-type CatalogModels<TProvider extends KnownProvider> = TProvider extends keyof typeof MODELS
-	? (typeof MODELS)[TProvider]
+type CatalogModels<TProvider extends KnownProvider> = [TProvider] extends [keyof typeof MODELS]
+	? (typeof MODELS)[TProvider & keyof typeof MODELS]
 	: never;
 
-/**
- * The model ids MODELS carries for a provider, and `never` for a provider it does not
- * carry. The absent branch must be spelled out: `keyof never` widens to
- * `string | number | symbol`, so constraining an id with `keyof CatalogModels<P>` would
- * accept any string once P dropped out of the catalog. getModel() would then type-check,
- * return undefined through its cast, and crash the caller - a silent failure in exactly
- * the thin-catalog case this narrowing exists to make safe.
- */
-type CatalogModelId<TProvider extends KnownProvider> = TProvider extends keyof typeof MODELS
-	? keyof (typeof MODELS)[TProvider]
+type CatalogModelId<TProvider extends KnownProvider> = [TProvider] extends [keyof typeof MODELS]
+	? keyof (typeof MODELS)[TProvider & keyof typeof MODELS]
 	: never;
 
 type ModelApi<
